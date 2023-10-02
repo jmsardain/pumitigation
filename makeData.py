@@ -43,7 +43,7 @@ def main():
     before = df
     df = df[column_names]
     df['labels'] = before['labels']
-    
+
     file_path = "all_info_df"
     output_path_figures_before_preprocessing = "fig.pdf"
     output_path_figures_after_preprocessing = "fig2.pdf"
