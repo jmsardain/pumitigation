@@ -16,6 +16,7 @@ from models import *
 def main():
 
 
+    print('Read data')
     # train dataset
     dataset_train = np.load('data/all_info_df_train.npy')
     x_train = dataset_train[:, :15]
@@ -31,33 +32,42 @@ def main():
     x_test = dataset_test[:, :15]
     y_test = dataset_test[:, 15:]
 
+    print('Create graphs from data')
     ## create graphs
     graph_list_train = makeGraph(x_train, y_train)
     graph_list_val   = makeGraph(x_val, y_val)
     graph_list_test  = makeGraph(x_test, y_test)
 
+    print('Prepare model')
     ## load model
-    model = GATNet_2(16)
+    model = GATNet_2(14)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model.to(device)
 
+    print('Prepare optimizer')
     ## define optimizer
     Adam_weight_decay = 0.001
     learning_ratio = 0.0006
     optimizer = torch.optim.AdamW(model.parameters(), lr=learning_ratio , weight_decay=Adam_weight_decay )
 
+    print('Prepare DataLoaders')
     ## create DataLoaders
-    dataloader       = DataLoader(graph_list_train, batch_size=512, shuffle=True)
+    dataloader_train = DataLoader(graph_list_train, batch_size=512, shuffle=True)
     dataloader_val   = DataLoader(graph_list_val,   batch_size=512, shuffle=True)
     dataloader_test  = DataLoader(graph_list_test,  batch_size=10,  shuffle=True)
 
-    # ## train
-    # for epoch in range(n_epochs):
-    #     print("Epoch:{}".format(epoch+1))
-    #     train_loss.append(train(train_loader, model, device, optimizer))
-    #
-    #     print('Epoch: {:03d}, Train Loss: {:.5f}, Val Loss: {:.5f},'.format(epoch, train_loss[epoch], val_loss[epoch]))
-    #     torch.save(model.state_dict(), "ckpt/"+'PU_'+"e{:03d}".format(epoch+1)+".pt")
+    print('Start training')
+    train_loss = []
+    val_loss   = []
+    n_epochs  = 5
+    ### train
+    for epoch in range(n_epochs):
+        print("Epoch:{}".format(epoch+1))
+        train_loss.append(train(dataloader_train, model, device, optimizer))
+        val_loss.append(validate(dataloader_val, model, device, optimizer))
+
+        print('Epoch: {:03d}, Train Loss: {:.5f}, Val Loss: {:.5f},'.format(epoch, train_loss[epoch], val_loss[epoch]))
+        torch.save(model.state_dict(), "ckpt/"+'PU_'+"e{:03d}".format(epoch+1)+".pt")
     #
     #
     # ## test
