@@ -327,7 +327,7 @@ class PNAConv_OnlyNodes(nn.Module):
 
 #### models including edge features
 class PNAConv_EdgeAttrib(nn.Module):
-    def __init__(self, in_channels):
+    def __init__(self, in_channels, deg):
         super(PNAConv_EdgeAttrib, self).__init__()
         aggregators = ['sum','mean', 'min', 'max', 'std']
         scalers = ['identity', 'amplification', 'attenuation',"linear",'inverse_linear']

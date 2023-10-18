@@ -7,6 +7,7 @@ import pandas as pd
 import datetime, os
 import torch
 from torch_geometric.data import DataListLoader, DataLoader
+from torch_geometric.utils import degree
 
 from utils import *
 from models import *
@@ -34,7 +35,7 @@ def modify_graphs_add_EdgesFeatures(graphs):
         #### example if you want to remove phi and  as node feature
         #x_new = graphs[i].x[:,:15]
         Total_energy = torch.sum(graphs[i].x[:,0])
-        Mean_energy = Total_energy / len(graph_list[i].x) ## maybe we should use Total_energy
+        Mean_energy = Total_energy / len(graphs[i].x) ## maybe we should use Total_energy
         ## replace phi for Total_energy or Mean_energy
         x_new = graphs[i].x
         x_new[:,15] = Total_energy/4
@@ -43,11 +44,11 @@ def modify_graphs_add_EdgesFeatures(graphs):
         Delta_R = []
         Delta_E = []
         for j in range(len(graphs[i].edge_index[0])):
-            Delta_eta = graphs[i].x[graph_list[i].edge_index[0][j] , 1] - graphs[i].x[graph_list[i].edge_index[1][j] , 1]
-            Delta_phi = graphs[i].x[graph_list[i].edge_index[0][j] , 15] - graphs[i].x[graph_list[i].edge_index[1][j] , 15]
+            Delta_eta = graphs[i].x[graphs[i].edge_index[0][j] , 1] - graphs[i].x[graphs[i].edge_index[1][j] , 1]
+            Delta_phi = graphs[i].x[graphs[i].edge_index[0][j] , 15] - graphs[i].x[graphs[i].edge_index[1][j] , 15]
             Delta_R_edge = Delta_eta**2 + Delta_phi**2
             
-            Sub_E_rel = np.abs(graphs[i].x[graph_list[i].edge_index[0][j]][0] - graphs[i].x[graph_list[i].edge_index[1][j]][0])/2
+            Sub_E_rel = np.abs(graphs[i].x[graphs[i].edge_index[0][j]][0] - graphs[i].x[graphs[i].edge_index[1][j]][0])/2
                         
             Delta_R.append(Delta_R_edge*2) # i still need to check if the order is ok
             Delta_E.append(Sub_E_rel)
@@ -58,7 +59,8 @@ def modify_graphs_add_EdgesFeatures(graphs):
         graph = Data(x=x_new, edge_index=graphs[i].edge_index, edge_attr=torch.tensor(edge_attr, dtype=torch.float), y=torch.tensor(graphs[i].y, dtype=torch.float), weights=torch.tensor(graphs[i].weights, dtype=torch.float) )
         
         new_graphs.append(graph)
-        
+
+ 
     return new_graphs
 
 # Main function.
@@ -143,10 +145,20 @@ def main():
     
     
     #### in case you want to train using some node features ####
-    Use_some_Edge_attributes = False
-    if Use_some_Edge_attributes:
+    Use_some_Edge_attributes = True
+    Do_edge_attributes = True
+    if Use_some_Edge_attributes and Do_edge_attributes:
+        output_path_graphs = "data/graphs" 
         graph_list_train = modify_graphs_add_EdgesFeatures(graph_list_train)
+        torch.save(graph_list_train, output_path_graphs + "_train_data_edges.pt")
+       
         graph_list_test = modify_graphs_add_EdgesFeatures(graph_list_test)
+        torch.save(graph_list_test, output_path_graphs + "_test_data_edges.pt")
+    
+    if not Do_edge_attributes:
+        graph_list_train = torch.load('data/graphs_train_data_edges.pt')
+        #graph_list_val   = makeGraph(x_val, y_val)
+        graph_list_test  = torch.load('data/graphs_test_data_edges.pt')
     
     
     ## create validation dataset // I think is better to create validation dataset here.
@@ -159,12 +171,21 @@ def main():
     ## load model
     model = GATNet_2(16)
     
-    if Use_some_Edge_attributes:
-        model = PNAConv_EdgeAttrib(16)
     
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    model.to(device)
+    if Use_some_Edge_attributes:
+        deg = torch.zeros(50, dtype=torch.long)
+        for data in graph_list_train:
+            d = degree(data.edge_index[1], num_nodes=data.num_nodes, dtype=torch.long)
+            #print("d",d)
+            deg += torch.bincount(d, minlength=deg.numel())
 
+            device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+            model.to(device)
+        model = PNAConv_EdgeAttrib(16,deg)
+    
+    #if Use_some_Edge_attributes:
+    #    model = PNAConv_EdgeAttrib(16)
+            
     print('Prepare optimizer')
     ## define optimizer
     #Adam_weight_decay = 0.001
@@ -184,18 +205,22 @@ def main():
     print('Start training')
     train_loss = []
     val_loss   = []
-    n_epochs  = 5
+    n_epochs  = 10
     ### train
     os.system('mkdir ckpt')
     
     for epoch in range(n_epochs):
         print("Epoch:{}".format(epoch+1))
-        train_loss.append(train(dataloader_train, model, device, optimizer))
-        val_loss.append(validate(dataloader_val, model, device, optimizer))
+        if Use_some_Edge_attributes:
+            train_loss.append(train_edge(dataloader_train, model, device, optimizer))
+            val_loss.append(validate_edge(dataloader_val, model, device, optimizer))
+        else:
+            train_loss.append(train(dataloader_train, model, device, optimizer))
+            val_loss.append(validate(dataloader_val, model, device, optimizer))
 
         print('Epoch: {:03d}, Train Loss: {:.5f}, Val Loss: {:.5f},'.format(epoch, train_loss[epoch], val_loss[epoch]))
         torch.save(model.state_dict(), "ckpt/"+'PU_'+"e{:03d}".format(epoch+1) + "_losstrain{:.3f}".format(train_loss[epoch]) + "_lossval{:.3f}".format(val_loss[epoch]) + ".pt")
-    plot_ROC_curve(graph_list_test, model, device)
+    plot_ROC_curve(dataloader_val, model, device)
     
     #
     #

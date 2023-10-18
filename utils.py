@@ -127,3 +127,44 @@ def plot_ROC_curve(loader, model, device):
     plt.ylabel("True positive rate", size=14)
     plt.savefig('roc_curve.png')
     plt.show()
+    
+def train_edge(loader, model, device, optimizer):
+    model.train()
+    loss_all = 0
+    for data in loader:
+        data = data.to(device)
+        optimizer.zero_grad()
+        #out = model(data.x, data.edge_index)
+        out = model(data.x, data.edge_index, data.edge_attr)
+
+        labels = torch.tensor(data.y, dtype=torch.float).to(device)
+        labels = torch.reshape(labels, (int(list(labels.shape)[0]),1))
+        ww = torch.tensor(data.weights, dtype=torch.float).to(device)
+        ww = torch.reshape(ww, (int(list(labels.shape)[0]),1))
+
+
+        # loss = F.binary_cross_entropy(output, new_y, weight = new_w)
+        loss = torch.nn.functional.binary_cross_entropy(out, labels, weight = ww)
+        loss.backward()
+        optimizer.step()
+        loss_all += loss.item()
+    return loss_all
+
+
+def validate_edge(loader, model, device, optimizer):
+    model.eval()
+    loss_all = 0
+    for data in loader:
+        data = data.to(device)
+        #out = model(data.x, data.edge_index)
+        out = model(data.x, data.edge_index, data.edge_attr)
+        out = out.view(-1, out.shape[-1])
+
+        labels = torch.tensor(data.y, dtype=torch.float).to(device)
+        labels = torch.reshape(labels, (int(list(labels.shape)[0]),1))
+        ww = torch.tensor(data.weights, dtype=torch.float).to(device)
+        ww = torch.reshape(ww, (int(list(labels.shape)[0]),1))
+
+        loss = torch.nn.functional.binary_cross_entropy(out, labels, weight = ww)        
+        loss_all += loss.item()
+    return loss_all
