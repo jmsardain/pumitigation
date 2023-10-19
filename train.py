@@ -146,7 +146,7 @@ def main():
     
     #### in case you want to train using some node features ####
     Use_some_Edge_attributes = True
-    Do_edge_attributes = True
+    Do_edge_attributes = False
     if Use_some_Edge_attributes and Do_edge_attributes:
         output_path_graphs = "data/graphs" 
         graph_list_train = modify_graphs_add_EdgesFeatures(graph_list_train)
@@ -179,10 +179,10 @@ def main():
             #print("d",d)
             deg += torch.bincount(d, minlength=deg.numel())
 
-            device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-            model.to(device)
         model = PNAConv_EdgeAttrib(16,deg)
     
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    model.to(device)
     #if Use_some_Edge_attributes:
     #    model = PNAConv_EdgeAttrib(16)
             
@@ -198,14 +198,14 @@ def main():
     
     print('Prepare DataLoaders')
     ## create DataLoaders
-    dataloader_train = DataLoader(graph_list_train, batch_size=512, shuffle=True)
+    dataloader_train = DataLoader(graph_list_train, batch_size=1024, shuffle=True)
     dataloader_val   = DataLoader(graph_list_val,   batch_size=256, shuffle=True)
     dataloader_test  = DataLoader(graph_list_test,  batch_size=32,  shuffle=True)
 
     print('Start training')
     train_loss = []
     val_loss   = []
-    n_epochs  = 10
+    n_epochs  = 12
     ### train
     os.system('mkdir ckpt')
     
@@ -220,7 +220,11 @@ def main():
 
         print('Epoch: {:03d}, Train Loss: {:.5f}, Val Loss: {:.5f},'.format(epoch, train_loss[epoch], val_loss[epoch]))
         torch.save(model.state_dict(), "ckpt/"+'PU_'+"e{:03d}".format(epoch+1) + "_losstrain{:.3f}".format(train_loss[epoch]) + "_lossval{:.3f}".format(val_loss[epoch]) + ".pt")
-    plot_ROC_curve(dataloader_val, model, device)
+    
+    if Use_some_Edge_attributes:
+        plot_ROC_curve(dataloader_val, model, device, "edges")
+    else:
+        plot_ROC_curve(dataloader_val, model, device, "")
     
     #
     #

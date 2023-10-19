@@ -78,7 +78,7 @@ def validate(loader, model, device, optimizer):
         loss_all += loss.item()
     return loss_all
 
-def plot_ROC_curve(loader, model, device):
+def plot_ROC_curve(loader, model, device, edges_or_nodes):
     model.eval()
     nodes_out = torch.tensor([])
     labels_test = torch.tensor([])
@@ -87,7 +87,11 @@ def plot_ROC_curve(loader, model, device):
     loss_all = 0
     for data in loader:
         data = data.to(device)
-        out = model(data.x, data.edge_index)
+        
+        if edges_or_nodes=="edges":
+            out = model(data.x, data.edge_index, data.edge_attr)
+        else:
+            out = model(data.x, data.edge_index)
         out = out.view(-1, out.shape[-1])
 
         labels = torch.tensor(data.y, dtype=torch.float).to(device)

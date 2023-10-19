@@ -195,21 +195,21 @@ class GATNet_2(nn.Module):
     def __init__(self, in_channels):
         super(GATNet_2, self).__init__()
 
-        self.conv1 = GATConv(in_channels, 16, heads=8, dropout=0.1)
-        self.conv2 = GATConv(16*8, 32, heads=8, dropout=0.1)
-        self.conv3 = GATConv(32*8, 32, heads=8, dropout=0.1)
+        self.conv1 = GATConv(in_channels, 32, heads=8, dropout=0.1)
+        self.conv2 = GATConv(32*8, 32, heads=8, dropout=0.1)
+        self.conv3 = GATConv(32*8, 64, heads=12, dropout=0.1)
 
         self.Linear_node1 = torch.nn.Linear(16,32)
         self.Linear_node2 = torch.nn.Linear(32,32)
 
-        self.Linear_node_After1 = torch.nn.Linear(128,64)
-        self.Linear_node_After2 = torch.nn.Linear(64,64)
+        self.Linear_node_After1 = torch.nn.Linear(32*8,80)
+        #self.Linear_node_After2 = torch.nn.Linear(64,64)
 
-        self.Linear_node_After3 = torch.nn.Linear(256,128)
-        self.Linear_node_After4 = torch.nn.Linear(128,64)
+        self.Linear_node_After3 = torch.nn.Linear(32*8,200)
+        #self.Linear_node_After4 = torch.nn.Linear(128,64)
 
-        self.Linear_final1 = torch.nn.Linear(128 + 32*8 + 32,160)
-        self.Linear_final2 = torch.nn.Linear(160,64)
+        self.Linear_final1 = torch.nn.Linear(64*12+200 + 80 + 32,200)
+        self.Linear_final2 = torch.nn.Linear(200,64)
         self.Linear_final3 = torch.nn.Linear(64,1)
 
     def forward(self, x, edge_index):
@@ -228,13 +228,13 @@ class GATNet_2(nn.Module):
 
         x_after1 = self.Linear_node_After1(x1)
         x_after1 = torch.relu(x_after1)
-        x_after1 = self.Linear_node_After2(x_after1)
-        x_after1 = torch.relu(x_after1)
+        #x_after1 = self.Linear_node_After2(x_after1)
+        #x_after1 = torch.relu(x_after1)
 
         x_after2 = self.Linear_node_After3(x2)
         x_after2 = torch.relu(x_after2)
-        x_after2 = self.Linear_node_After4(x_after2)
-        x_after2 = torch.relu(x_after2)
+        #x_after2 = self.Linear_node_After4(x_after2)
+        #x_after2 = torch.relu(x_after2)
 
 
         xfinal = torch.cat(( gg2, x3, x_after1, x_after2), dim=1)
@@ -332,11 +332,11 @@ class PNAConv_EdgeAttrib(nn.Module):
         aggregators = ['sum','mean', 'min', 'max', 'std']
         scalers = ['identity', 'amplification', 'attenuation',"linear",'inverse_linear']
         #''' 
-        self.conv1 = PNAConv(in_channels, out_channels=40, deg=deg, edge_dim=2, towers=2, post_layers=1,aggregators=aggregators,
+        self.conv1 = PNAConv(in_channels, out_channels=64, deg=deg, edge_dim=2, towers=2, post_layers=1,aggregators=aggregators,
                                             scalers = scalers)
-        self.conv2 = PNAConv(in_channels=40, out_channels=100, deg=deg, edge_dim=2, towers=2, post_layers=1,aggregators=aggregators,
+        self.conv2 = PNAConv(in_channels=64, out_channels=128, deg=deg, edge_dim=2, towers=2, post_layers=1,aggregators=aggregators,
                                             scalers = scalers)
-        self.conv3 = PNAConv(in_channels=100, out_channels=230, deg=deg, edge_dim=2, towers=2, post_layers=1,aggregators=aggregators,
+        self.conv3 = PNAConv(in_channels=128, out_channels=256, deg=deg, edge_dim=2, towers=2, post_layers=1,aggregators=aggregators,
                                             scalers = scalers)
         '''
         self.conv1 = PNA(in_channels=-1, hidden_channels = 32 , num_layers=1 , out_channels=64, aggregators=aggregators,
@@ -356,8 +356,8 @@ class PNAConv_EdgeAttrib(nn.Module):
         self.Linear_node_After3 = torch.nn.Linear(64,128)
         #self.Linear_node_After4 = torch.nn.Linear(128,64)
         
-        #self.Linear_final1 = torch.nn.Linear(128 + 32*8 + 32,160)
-        self.Linear_final1 = torch.nn.Linear(0 + 40 + 100 + 230,370)
+        #self.Linear_final1 = torch.nn.Linear(0 + 40 + 100 + 230,370)
+        self.Linear_final1 = torch.nn.Linear(0 + 64 + 128 + 256,370)
         self.Linear_final2 = torch.nn.Linear(370,150)
         self.Linear_final3 = torch.nn.Linear(150,32)
         self.Linear_final4 = torch.nn.Linear(32,1)
