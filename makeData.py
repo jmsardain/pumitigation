@@ -128,6 +128,8 @@ def main():
     df = pd.read_csv(filename, sep=' ')
     #df = df.head(4000)
 
+    ## sort data 
+    df.sort_values(by=['eventNumber', 'jetCnt'])
     
     column_names = ['clusterE', 'clusterEta', 'cluster_CENTER_LAMBDA', 'cluster_CENTER_MAG',
                 'cluster_ENG_FRAC_EM', 'cluster_FIRST_ENG_DENS', 'cluster_LATERAL', 'cluster_LONGITUDINAL',
