@@ -196,21 +196,22 @@ class GATNet_2(nn.Module):
         super(GATNet_2, self).__init__()
 
         self.conv1 = GATConv(in_channels, 32, heads=8, dropout=0.1)
-        self.conv2 = GATConv(32*8, 32, heads=8, dropout=0.1)
-        self.conv3 = GATConv(32*12, 64, heads=12, dropout=0.1)
+        self.conv2 = GATConv(32 * 8, 32, heads=8, dropout=0.1)
+        self.conv3 = GATConv(32 * 8, 64, heads=12, dropout=0.1)
 
-        self.Linear_node1 = torch.nn.Linear(17,32)
-        self.Linear_node2 = torch.nn.Linear(32,32)
+        self.Linear_node1 = torch.nn.Linear(in_channels, 32)
+        self.Linear_node2 = torch.nn.Linear(32, 32)
 
-        self.Linear_node_After1 = torch.nn.Linear(32*8,80)
+        self.Linear_node_After1 = torch.nn.Linear(32 * 8, 80)
+        self.Linear_node_After3 = torch.nn.Linear(32 * 8, 200)
 
-        self.Linear_node_After3 = torch.nn.Linear(32*8,200)
+        self.Linear_final1 = torch.nn.Linear(64 * 12 + 200 + 80 + 32, 200)
+        self.Linear_final2 = torch.nn.Linear(200, 64)
+        self.Linear_final3 = torch.nn.Linear(64, 1)
 
-        self.Linear_final1 = torch.nn.Linear(64*12+200 + 80 + 32,200)
-        self.Linear_final2 = torch.nn.Linear(200,64)
-        self.Linear_final3 = torch.nn.Linear(64,1)
 
     def forward(self, x, edge_index):
+
         gg1 = self.Linear_node1(x)
         gg1 = torch.relu(gg1)
 
@@ -219,8 +220,10 @@ class GATNet_2(nn.Module):
 
         x1 = self.conv1(x, edge_index)
         x1 = torch.relu(x1)
+
         x2 = self.conv2(x1, edge_index)
         x2 = torch.relu(x2)
+
         x3 = self.conv3(x2, edge_index)
         x3 = torch.relu(x3)
 
