@@ -31,6 +31,7 @@ def modify_graphs(graphs):
 def modify_graphs_add_EdgesFeatures(graphs):
     new_graphs = []
     for i in range (len(graphs)):
+        if i%10000==0 : print("graphs_number",i)
         #graph[i] each graph
         #### example if you want to remove phi and  as node feature
         #x_new = graphs[i].x[:,:15]
@@ -38,11 +39,15 @@ def modify_graphs_add_EdgesFeatures(graphs):
         Mean_energy = Total_energy / len(graphs[i].x) ## maybe we should use Total_energy
         ## replace phi for Total_energy or Mean_energy
         x_new = graphs[i].x
-        x_new[:,15] = Total_energy/4
+        x_new[:,15] = x_new[:,16] #Total_energy/4 #maybe include total energy is not a good idea
+        x_new = graphs[i].x[:,:16] ## delete duplicated info (basically previous lines just delete phi information)
         
         edge_attr = []
         Delta_R = []
         Delta_E = []
+
+        
+        
         for j in range(len(graphs[i].edge_index[0])):
             Delta_eta = graphs[i].x[graphs[i].edge_index[0][j] , 1] - graphs[i].x[graphs[i].edge_index[1][j] , 1]
             Delta_phi = graphs[i].x[graphs[i].edge_index[0][j] , 15] - graphs[i].x[graphs[i].edge_index[1][j] , 15]
@@ -56,7 +61,7 @@ def modify_graphs_add_EdgesFeatures(graphs):
         edge_attr.append(np.array([Delta_R,Delta_E]).T)
         edge_attr = np.squeeze(np.array(edge_attr))
 
-        graph = Data(x=x_new, edge_index=graphs[i].edge_index, edge_attr=torch.tensor(edge_attr, dtype=torch.float), y=torch.tensor(graphs[i].y, dtype=torch.float), weights=torch.tensor(graphs[i].weights, dtype=torch.float) )
+        graph = Data(x=x_new, edge_index=graphs[i].edge_index, edge_attr=torch.tensor(edge_attr, dtype=torch.float), y=torch.tensor(graphs[i].y, dtype=torch.float), weights=torch.tensor(graphs[i].weights, dtype=torch.float), JetRawE=torch.tensor(graphs[i].JetRawE, dtype=torch.float) )
         
         new_graphs.append(graph)
 
@@ -139,26 +144,33 @@ def main():
 
 def main():
     ## load graphs
-    graph_list_train = torch.load('data/graphs_train.pt')
-    #graph_list_val   = makeGraph(x_val, y_val)
-    graph_list_test  = torch.load('data/graphs_test.pt')
-    
+    #graph_list_train = torch.load('data/graphs_train.pt')
+    #graph_list_test  = torch.load('data/graphs_test.pt')
+
+    graph_list_train = torch.load('data/graphs_NewDataset_train.pt')
+    graph_list_test  = torch.load('data/graphs_NewDataset_test.pt')
     
     #### in case you want to train using some node features ####
-    Use_some_Edge_attributes = True
+    Use_some_Edge_attributes = False
     Do_edge_attributes = False
     if Use_some_Edge_attributes and Do_edge_attributes:
-        output_path_graphs = "data/graphs" 
+        output_path_graphs = "data/graphs_NewDataset" 
         graph_list_train = modify_graphs_add_EdgesFeatures(graph_list_train)
         torch.save(graph_list_train, output_path_graphs + "_train_data_edges.pt")
        
         graph_list_test = modify_graphs_add_EdgesFeatures(graph_list_test)
         torch.save(graph_list_test, output_path_graphs + "_test_data_edges.pt")
-    
+        
     if not Do_edge_attributes:
-        graph_list_train = torch.load('data/graphs_train_data_edges.pt')
+        graph_list_train = torch.load('data/graphs_NewDataset_train_data_edges.pt')
         #graph_list_val   = makeGraph(x_val, y_val)
-        graph_list_test  = torch.load('data/graphs_test_data_edges.pt')
+        graph_list_test  = torch.load('data/graphs_NewDataset_test_data_edges.pt')
+    
+    if not Do_edge_attributes and not Use_some_Edge_attributes:
+        graph_list_train = torch.load('data/graphs_NewDataset_train.pt')
+        #graph_list_val   = makeGraph(x_val, y_val)
+        graph_list_test  = torch.load('data/graphs_NewDataset_test.pt')
+    
     
     
     ## create validation dataset // I think is better to create validation dataset here.
@@ -169,8 +181,10 @@ def main():
     
     print('Prepare model')
     ## load model
-    model = GATNet_2(16)
+    model = GATNet_2(17)
     
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
     if Use_some_Edge_attributes:
         deg = torch.zeros(50, dtype=torch.long)
@@ -180,8 +194,9 @@ def main():
             deg += torch.bincount(d, minlength=deg.numel())
 
         model = PNAConv_EdgeAttrib(16,deg)
+        #model= nn.DataParallel(model)
     
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    #device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model.to(device)
     #if Use_some_Edge_attributes:
     #    model = PNAConv_EdgeAttrib(16)
@@ -193,33 +208,34 @@ def main():
     #optimizer = torch.optim.AdamW(model.parameters(), lr=learning_ratio , weight_decay=Adam_weight_decay )
     optimizer = optim.Adam(model.parameters(), lr=learning_ratio)
     optimizer2 = optim.Adam(model.parameters(), lr=learning_ratio*2)
-    optimizer3 = optim.Adam(model.parameters(), lr=learning_ratio*4)
+    optimizer3 = optim.Adam(model.parameters(), lr=learning_ratio*3)
 
     
     print('Prepare DataLoaders')
     ## create DataLoaders
-    dataloader_train = DataLoader(graph_list_train, batch_size=1024, shuffle=True)
+    dataloader_train = DataLoader(graph_list_train, batch_size=3000, shuffle=True)
     dataloader_val   = DataLoader(graph_list_val,   batch_size=256, shuffle=True)
     dataloader_test  = DataLoader(graph_list_test,  batch_size=32,  shuffle=True)
 
     print('Start training')
     train_loss = []
     val_loss   = []
-    n_epochs  = 12
+    n_epochs  = 15
     ### train
     os.system('mkdir ckpt')
     
     for epoch in range(n_epochs):
         print("Epoch:{}".format(epoch+1))
         if Use_some_Edge_attributes:
-            train_loss.append(train_edge(dataloader_train, model, device, optimizer))
+            #train_loss.append(train_edge(dataloader_train, model, device, optimizer))
+            train_loss.append(train_edge_2(epoch, dataloader_train, model, device, optimizer, optimizer2, optimizer3))
             val_loss.append(validate_edge(dataloader_val, model, device, optimizer))
         else:
             train_loss.append(train(dataloader_train, model, device, optimizer))
             val_loss.append(validate(dataloader_val, model, device, optimizer))
 
         print('Epoch: {:03d}, Train Loss: {:.5f}, Val Loss: {:.5f},'.format(epoch, train_loss[epoch], val_loss[epoch]))
-        torch.save(model.state_dict(), "ckpt/"+'PU_'+"e{:03d}".format(epoch+1) + "_losstrain{:.3f}".format(train_loss[epoch]) + "_lossval{:.3f}".format(val_loss[epoch]) + ".pt")
+        torch.save(model.state_dict(), "ckpt/"+'PU_batch3000Dropout_Complex_varlr_'+"e{:03d}".format(epoch+1) + "_losstrain{:.3f}".format(train_loss[epoch]) + "_lossval{:.3f}".format(val_loss[epoch]) + ".pt")
     
     if Use_some_Edge_attributes:
         plot_ROC_curve(dataloader_val, model, device, "edges")
