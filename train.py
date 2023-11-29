@@ -16,12 +16,14 @@ from models import *
 ## example in case you want to modify entries in the dataset or add atributes 
 def modify_graphs(graphs):
     new_graphs = []
+    jet_count = 0
     for i in range (len(graphs)):
+        jet_count += 1
         #graph[i] each graph
         #### example if you want to remove phi and  as node feature
         x_new = graphs[i].x[:,:15]
 
-        graph = Data(x=x_new, edge_index=graphs[i].edge_index, y=torch.tensor(graphs[i].y, dtype=torch.float), weights=torch.tensor(graphs[i].weights, dtype=torch.float) )
+        graph = Data(x=x_new, edge_index=graphs[i].edge_index, y=torch.tensor(graphs[i].y, dtype=torch.float), weights=torch.tensor(graphs[i].weights, dtype=torch.float))#, jetCnt=torch.tensor(jet_count, dtype=torch.int))
         
         new_graphs.append(graph)
         
@@ -235,7 +237,7 @@ def main():
             val_loss.append(validate(dataloader_val, model, device, optimizer))
 
         print('Epoch: {:03d}, Train Loss: {:.5f}, Val Loss: {:.5f},'.format(epoch, train_loss[epoch], val_loss[epoch]))
-        torch.save(model.state_dict(), "ckpt/"+'PU_batch3000Dropout_Complex_varlr_'+"e{:03d}".format(epoch+1) + "_losstrain{:.3f}".format(train_loss[epoch]) + "_lossval{:.3f}".format(val_loss[epoch]) + ".pt")
+        torch.save(model.state_dict(), "ckpt/"+'PU_batch3000Dropout_Complex_varlr_GATConv_'+"e{:03d}".format(epoch+1) + "_losstrain{:.3f}".format(train_loss[epoch]) + "_lossval{:.3f}".format(val_loss[epoch]) + ".pt")
     
     if Use_some_Edge_attributes:
         plot_ROC_curve(dataloader_val, model, device, "edges")

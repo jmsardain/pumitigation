@@ -10,10 +10,13 @@ import gc
 
 import torch
 from torch_geometric.data import Data
+import pickle 
 
-def normalize(x):
+
+def normalize(x, dic, feature):
     mean, std = np.mean(x), np.std(x)
     out =  (x - mean) / std
+    dic[str(feature)] = [mean, std]
     return out, mean, std
 
 def apply_save_log(x):
@@ -156,7 +159,7 @@ def main():
     print(df["jetRawE"])
     
     os.system('mkdir data')
-    
+    dic_mean_and_std = {}
     #file_path = "all_info_df"
     #output_path_figures_before_preprocessing = "fig.pdf"
     #output_path_figures_after_preprocessing = "fig2.pdf"
@@ -171,14 +174,14 @@ def main():
     field_names = ["clusterE", "cluster_CENTER_LAMBDA", "cluster_FIRST_ENG_DENS", "cluster_SECOND_TIME", "cluster_SIGNIFICANCE"]
     for field_name in field_names:
         x, minimum, epsilon = apply_save_log(df[field_name])
-        x, mean, std = normalize(x)
+        x, mean, std = normalize(x, dic_mean_and_std, field_name)
         df[field_name] = x
 
     # just normalizing
     field_names = ["clusterEta", "cluster_CENTER_MAG", "nPrimVtx", "avgMu"]
     for field_name in field_names:
         x = df[field_name]
-        x, mean, std = normalize(x)
+        x, mean, std = normalize(x, dic_mean_and_std, field_name)
         df[field_name] = x
 
     # params between [0, 1]
@@ -186,15 +189,19 @@ def main():
     field_names = ["cluster_ENG_FRAC_EM", "cluster_LATERAL", "cluster_LONGITUDINAL", "cluster_PTD", "cluster_ISOLATION","fracE"]
     for field_name in field_names:
         x = df[field_name]
-        x, mean, std = normalize(x)
+        x, mean, std = normalize(x, dic_mean_and_std, field_name)
         df[field_name] = x
 
     # special preprocessing
     field_name = "cluster_time"
     x = df[field_name]
     x = np.abs(x)**(1./3.) * np.sign(x)
-    x, mean, std = normalize(x)
+    x, mean, std = normalize(x,dic_mean_and_std, field_name)
 
+    with open('dict_mean_and_std.pkl', 'wb') as f:
+        pickle.dump(dic_mean_and_std, f)
+    print(dic_mean_and_std)
+    
     df[field_name] = x
 
     ### create data per jet
@@ -371,7 +378,10 @@ def main():
     print("pytorch data will be created")
     ## here pytorch data is created
     graph_list = []
+    jet_count = 0
     for i in range(len(clusterE)):
+        jet_count += 1
+        jetCnt = np.ones(len(clusterE[i]))*jet_count
         num_nodes = len(clusterE[i])
         edge_index = torch.tensor([[k, j] for k in range(num_nodes) for j in range(k+1, num_nodes)], dtype=torch.long).t().contiguous()
         #print(edge_index)
@@ -390,7 +400,7 @@ def main():
         x = torch.tensor(vec, dtype=torch.float)
         w=(np.array(labels[i]) > 0.5)*9 + 1
 
-        graph = Data(x=x, edge_index=edge_index, y=torch.tensor(labels[i], dtype=torch.float), weights=torch.tensor(w, dtype=torch.float), JetRawE=torch.tensor(jetRawE[i], dtype=torch.float)  )
+        graph = Data(x=x, edge_index=edge_index, y=torch.tensor(labels[i], dtype=torch.float), weights=torch.tensor(w, dtype=torch.float), JetRawE=torch.tensor(jetRawE[i], dtype=torch.float), jetCnt=torch.tensor(jetCnt, dtype=torch.int)  )
 
         graph_list.append(graph)
 
