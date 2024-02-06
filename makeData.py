@@ -12,6 +12,7 @@ import torch
 from torch_geometric.data import Data
 import pickle
 import networkx as nx
+from sklearn.model_selection import train_test_split
 
 def normalize(x, dic, feature):
     mean, std = np.mean(x), np.std(x)
@@ -49,7 +50,7 @@ def main():
 
     # ### New dataset 60 millions
     # filename = uproot.open('/data/jmsardain/JetCalib/Akt4EMTopo.topo-cluster.root')["ClusterTree"]
-    filename = uproot.open('/home/jmsardain/JetCalib/PUMitigation/latest/MakeROOT/output.root')["ClusterTree"]
+    filename = uproot.open('/home/ravinascos/pileup/tets/jad_output/output.root')["ClusterTree"]
     df = filename.arrays(library="pd")
     # print(len(df))
     # df = df.head(5000000)
@@ -66,15 +67,22 @@ def main():
                 'eventNumber', 'jetCalE', 'jetRawE', 'jetRawPt', 'truthJetE', 'truthJetPt', 'clusterECalib', 'cluster_ENG_CALIB_TOT', ## add these features to do comprehensive plots at the end
                 'labels', ## these are labels, 1 = PU, 0 = signal
                 ]
+    print("total data->",len(df))
+    #print("222222222222",df['jetCnt'][2])
+    df = df[ df['jetCnt']%3 < 0.1 ] 
+    #df = df[ df['jetCnt']%15 < 0.1 ] # small dataset for tests
+    print("selected data->",len(df))
+    #print(df['jetCnt'][2])
 
-
-    df['labels'] = ((df['cluster_ENG_CALIB_TOT'] < 0.0001) & (df['clusterE'] > 0)).astype(int)
+    df['labels'] = ((df['cluster_ENG_CALIB_TOT'] < 0.0001) & (df['clusterE'] > 0) ).astype(int)
     # df['fracE'] = df['clusterE'] / df['jetRawE']
     df['diffEta'] = df['clusterEta'] - df['jetCalEta']
-
+    
     df = df[column_names]
     #df['labels'] = before['labels']
 
+    df['clusterE_copy'] = df['clusterE']
+    
     # print(df["jetRawE"])
 
     os.system('mkdir data')
@@ -117,10 +125,7 @@ def main():
     x = df[field_name]
     x = np.abs(x)**(1./3.) * np.sign(x)
     x, mean, std = normalize(x,dic_mean_and_std, field_name)
-    
-    with open('dict_mean_and_std.pkl', 'wb') as f:
-        pickle.dump(dic_mean_and_std, f)
-    print(dic_mean_and_std)
+
     
     df[field_name] = x
     
@@ -156,8 +161,9 @@ def main():
     temp_truthJetPt = []
     temp_clusterECalib = []
     temp_cluster_ENG_CALIB_TOT = []
-    temp_eventNumber = []
-
+    temp_eventNumber = []    
+    temp_clusterE_copy = []
+    
     clusterE = []
     clusterEta = []
     cluster_time = []
@@ -188,10 +194,12 @@ def main():
     clusterECalib = []
     cluster_ENG_CALIB_TOT = []
     eventNumber = []
-
+    clusterE_sum = [] # variable used for NN trainnig
+    clusterE_sum_flat = [] 
+    
     count_jets = 0
-    old_event = df['jetCnt'][0]
-    old_jetCnt = df['jetCnt'][0]
+    old_event = np.array(df['jetCnt'])[0]
+    old_jetCnt = np.array(df['jetCnt'])[0]
     change_bol = False
 
 
@@ -269,6 +277,11 @@ def main():
                 clusterECalib.append(temp_clusterECalib)
                 cluster_ENG_CALIB_TOT.append(temp_cluster_ENG_CALIB_TOT)
                 eventNumber.append(temp_eventNumber)
+
+                ## for NN trainning
+                tempE_sum = np.sum( np.array(temp_clusterE_copy) )
+                clusterE_sum_flat.append(tempE_sum)
+                #clusterE_sum.append(tempE_sum*np.ones(len(tempE)))
                 
                 tempE = []
                 tempEta = []
@@ -298,6 +311,7 @@ def main():
                 temp_truthJetPt = []
                 temp_clusterECalib = []
                 temp_cluster_ENG_CALIB_TOT = []
+                temp_clusterE_copy = []
                 temp_eventNumber = []
                 
                 count_jets = 0
@@ -331,8 +345,14 @@ def main():
         temp_truthJetPt.append(row['truthJetPt'])
         temp_clusterECalib.append(row['clusterECalib'])
         temp_cluster_ENG_CALIB_TOT.append(row['cluster_ENG_CALIB_TOT'])
-        temp_eventNumber.append(row['eventNumber'])
+        temp_clusterE_copy.append(row['clusterE_copy'])
+        temp_eventNumber.append(row['eventNumber'])    
     ## create Dictionary containing data and labels
+
+    x = clusterE_sum_flat
+    x, mean_E_sum, std_E_sum = normalize(x, dic_mean_and_std, "clusterE_sum")
+
+
     Dictionary_data ={
         "0": clusterE,
         "1": clusterEta,
@@ -362,10 +382,14 @@ def main():
         "truthJetPt": truthJetPt,
         "clusterECalib": clusterECalib,
         "cluster_ENG_CALIB_TOT": cluster_ENG_CALIB_TOT,
-        "eventNumber": eventNumber,
-
+        #"clusterE_sum": clusterE_sum,
+        "eventNumber": eventNumber
     }
-
+    
+    with open('dict_mean_and_std.pkl', 'wb') as f:
+        pickle.dump(dic_mean_and_std, f)
+    print(dic_mean_and_std)
+    
     #print("jetRawE",jetRawE[i])
     # Delete the old DataFrame
     del df
@@ -378,8 +402,9 @@ def main():
     jet_count = 0
     for i in range(len(clusterE)):
         jet_count += 1
-        jetCnt = np.ones(len(clusterE[i]))*jet_count
         num_nodes = len(clusterE[i])
+        jetCnt = jet_count * np.ones(num_nodes)
+        clusterE_sum = ((clusterE_sum_flat[i] - mean_E_sum) / std_E_sum ) * np.ones(num_nodes)
         edge_index = torch.tensor([[k, j] for k in range(num_nodes) for j in range(k+1, num_nodes)], dtype=torch.long).t().contiguous()
         #print(edge_index)
         vec = []
@@ -423,7 +448,8 @@ def main():
                     ClusterECalib=torch.tensor(clusterECalib[i], dtype=torch.float),
                     ClusterENGCALIBTOT=torch.tensor(cluster_ENG_CALIB_TOT[i], dtype=torch.float),
                     eventNumber=torch.tensor(eventNumber[i], dtype=torch.int),
-                    jetCnt=torch.tensor(jetCnt, dtype=torch.int)
+                    jetCnt=torch.tensor(jetCnt, dtype=torch.int),
+                    clusterE_sum=torch.tensor(clusterE_sum, dtype=torch.float)
                     )
 
         graph_list.append(graph)
@@ -431,22 +457,26 @@ def main():
             networkx_graph = to_networkx(graph)
             file_path = "graph.graphml"
             nx.write_graphml(networkx_graph, file_path)
-
-
+    
     ## save data
     output_path_graphs = "data/graphs_NewDataset"
 
     torch.save(graph_list, output_path_graphs + "_fulldata.pt")
     size_train = 0.80
-    graphs_test = graph_list[int(len(graph_list)*size_train) : int(len(graph_list))]
-    graph_train = graph_list[0 : int(len(graph_list)*size_train) ]
 
-    #torch.save(graph_train, output_path_graphs + "_train.pt")
-    #torch.save(graphs_test, output_path_graphs + "_test.pt")
+    #graphs_test = graph_list[int(len(graph_list)*size_train) : int(len(graph_list))]
+    #graph_train = graph_list[0 : int(len(graph_list)*size_train) ]
+    
+    #train_size = int(0.8 * len(graph_list))
+    #valid_size = len(graph_list) - train_size
+    #generator1 = torch.Generator().manual_seed(42)
+    #graph_train, graphs_test = torch.utils.data.random_split(graph_list, [train_size, valid_size], generator=generator1)
 
-    torch.save(graph_list[0 : int(len(graph_list)*size_train) ], output_path_graphs + "_train.pt")
-    torch.save(graph_list[int(len(graph_list)*size_train) : int(len(graph_list))], output_path_graphs + "_test.pt")
-
+    #graph_train, graphs_test = train_test_split(graph_list, test_size = size_train, random_state = 144)
+    graphs_test, graph_train = train_test_split(graph_list, test_size = size_train, random_state = 144)
+    
+    torch.save(graph_train, output_path_graphs + "_train.pt")
+    torch.save(graphs_test, output_path_graphs + "_test.pt")
 
 
 # Main function call.

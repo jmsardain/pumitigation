@@ -481,3 +481,34 @@ class EdgeGinNet(torch.nn.Module):
         x = self.lin(x)
         #print(x.shape)
         return F.sigmoid(x)
+
+
+class NN_weights(nn.Module):
+    def __init__(self):
+        super(NN_weights,self).__init__()
+
+        self.do_dropout = False
+        self.Drop = nn.Dropout( 0.15 ) 
+        self.layer1 = nn.Linear( 3 ,32)   
+        self.layer2 = nn.Linear(32,16) 
+        self.layer3 = nn.Linear(16,1) 
+        #self.layer4 = nn.Linear(N_layer3,1) 
+        #self.layer5 = nn.Linear(N_layer4,1)  
+        self.activationReLU = nn.ReLU()
+        self.activationLeaky = nn.LeakyReLU()
+        self.activation = nn.Sigmoid()
+        self.softmax = nn.Softmax(dim=1)
+
+    def  forward(self,x): 
+        x = self.layer1(x)
+        x = self.activationLeaky(x)
+        if self.do_dropout ==True:
+            x = self.Drop(x)   ###!!!!!!!!!!!!
+        x = self.layer2(x)
+        x = self.activationLeaky(x)
+        if self.do_dropout ==True:
+            x = self.Drop(x)   ###!!!!!!!!!!!!
+        x = self.layer3(x)
+        x = nn.functional.sigmoid(x)
+
+        return 1.25*x

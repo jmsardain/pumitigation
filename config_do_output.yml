@@ -1,0 +1,11 @@
+{'architecture':{'choose_model':'GATNet',
+                'learning_rate':0.0005,
+                'batch_size':4096,
+                'n_epochs':10},
+'data': {'path_to_train':'./data/graphs_NewDataset_train.pt',
+        'path_to_test':'./data/graphs_NewDataset_test.pt',
+        'size_train':0.8,
+        'path_to_save':'./data/out_train/',
+        'path_classifier':'./data/out_train/GATNet_test_tenmillione014_losstrain2.979_lossval11.802.pt',
+        'path_NN':'./data/out_train/NN_weightsGATNet_test_tenmillione030_losstrain0.561_lossval1.293.pt',
+        'model_name':'GATNet_test_tenmillion'}}
