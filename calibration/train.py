@@ -19,6 +19,7 @@ parser.add_argument('--outdir',   dest='outdir',   type=str, default='', help='D
 
 args = parser.parse_args()
 
+
 def get_latest_file(directory, DNNorRetrain=''):
     list_of_files = glob.glob(directory+'/'+DNNorRetrain+'_*.pt')
     latest_file = max(list_of_files, key=os.path.getctime)
@@ -32,6 +33,7 @@ class Swish(nn.Module):
 class TanhPlusOne(nn.Module):
     def forward(self, x):
         return 2*(torch.tanh(x) + 1)
+
 
 # Define LGK loss function
 def lgk_loss_function(y_true, y_pred):
@@ -55,12 +57,13 @@ def lgk_loss_function_1(y_true, y_pred):
     loss = lgk_loss
     return loss.mean()
 
+
 # Define the model architecture
 class CustomModel(nn.Module):
-    def __init__(self):
+    def __init__(self, inputsize):
         super(CustomModel, self).__init__()
         self.flatten = nn.Flatten()
-        self.fc1 = nn.Linear(in_features=16, out_features=256)
+        self.fc1 = nn.Linear(in_features=inputsize, out_features=256)
         self.swish1 = Swish()
         self.fc2 = nn.Linear(in_features=256, out_features=128)
         self.swish2 = Swish()
@@ -80,19 +83,93 @@ class CustomModel(nn.Module):
         x = self.tanhPlusOne(self.fc5(x))
         return x
 
-# Build and compile the model
-def build_and_compile_model(X_train, lr):
-    model = CustomModel()
-    criterion = lgk_loss_function
-    optimizer = optim.Adam(model.parameters(), lr=lr)
-    return model, criterion, optimizer
 
-def build_and_compile_model_retrain(X_train, lr):
-    model = CustomModel()
-    criterion = lgk_loss_function_1
-    optimizer = optim.Adam(model.parameters(), lr=lr)
-    return model, criterion, optimizer
 
+def train_loop(dataloader, model, optimizer):
+
+    model.train()
+    loss_tot = 0
+    n_batches = 0
+    for batch, data in enumerate(dataloader):
+        
+        # Compute prediction and loss
+        x = data[:, :-1].float()
+        y = data[:, -1]
+
+        # if batch==0: print(x) 
+
+    
+        out = model(x)
+        
+        loss = lgk_loss_function(out, y)
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+        
+        loss_tot += loss.item()
+        n_batches +=1 
+
+    loss_tot /= n_batches
+    return loss_tot
+
+def val_loop(dataloader, model):
+
+    loss_tot = 0
+    n_batches = 0
+
+    for batch, data in enumerate(dataloader):
+        with torch.no_grad():
+            # Compute prediction and loss
+            x = data[:, :-1].float()
+            y = data[:, -1]
+            out = model(x)
+            loss = lgk_loss_function(out,y)
+            loss_tot += loss.item()
+            n_batches +=1 
+    loss_tot /= n_batches
+    
+    return loss_tot
+
+def retrain_loop(dataloader, model, optimizer):
+
+    model.train()
+    loss_tot = 0
+    n_batches = 0
+    for batch, data in enumerate(dataloader):
+        # Compute prediction and loss
+        x = data[:, :-1].float()
+        y = data[:, -1]
+        out = model(x)
+        
+        loss = lgk_loss_function_1(out, y)
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+        
+        loss_tot += loss.item()
+        n_batches +=1 
+
+    loss_tot /= n_batches
+    return loss_tot
+
+def reval_loop(dataloader, model):
+
+    loss_tot = 0
+    n_batches = 0
+
+    for batch, data in enumerate(dataloader):
+        with torch.no_grad():
+            # Compute prediction and loss
+            x = data[:, :-1].float()
+            y = data[:, -1]
+            out = model(x)
+            loss = lgk_loss_function_1(out,y)
+            loss_tot += loss.item()
+            n_batches +=1 
+    loss_tot /= n_batches
+    
+    return loss_tot
+    
 
 def main():
 
@@ -102,83 +179,54 @@ def main():
     except ImportError:
         print("{} already exists".format(dir_path))
     pass
+    
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     # train dataset
     dataset_train = np.load('data/all_info_df_train.npy')
-    x_train = dataset_train[:, 4:]
+    x_train = dataset_train[:, 3:]
     y_train = dataset_train[:, 0]
-    # w_train = dataset_train[:, 4] ## 1: response, 2: response wider, 3: energy, 4: log energy
     data_train = np.concatenate([x_train, y_train[:, None]], axis=-1)
+    data_train = torch.from_numpy(data_train).to(device)
     print(f"Training dataset size {y_train.shape[0]}")
 
     # val dataset
     dataset_val = np.load('data/all_info_df_val.npy')
-    x_val = dataset_val[:, 4:]
+    x_val = dataset_val[:, 3:]
     y_val = dataset_val[:, 0]
     data_val = np.concatenate([x_val, y_val[:, None]], axis=-1)
+    data_val = torch.from_numpy(data_val).to(device)
     print(f"Validation dataset size {y_val.shape[0]}")
 
     # test dataset
     dataset_test = np.load('data/all_info_df_test.npy')
-    x_test = dataset_test[:, 4:]
+    x_test = dataset_test[:, 3:]
     y_test = dataset_test[:, 0]
     data_test = np.concatenate([x_test, y_test[:, None]], axis=-1)
+    data_test = torch.from_numpy(data_test).to(device)
     print(f"Test dataset size {y_test.shape[0]}")
 
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
-    
-    # criterion.to(device)
 
     ## Make the input PyTorch-y
-    x_train_tensor = torch.tensor(x_train, dtype=torch.float32).to(device)
-    y_train_tensor = torch.tensor(y_train, dtype=torch.float32).to(device)
+    train_loader = DataLoader(data_train, batch_size=4096, shuffle=True)
+    val_loader = DataLoader(data_val, batch_size=4096, shuffle=True)
+    test_loader = DataLoader(data_test, batch_size=4096, shuffle=False)
 
-    x_val_tensor = torch.tensor(x_val, dtype=torch.float32).to(device)
-    y_val_tensor = torch.tensor(y_val, dtype=torch.float32).to(device)
-
-    x_test_tensor = torch.tensor(x_test, dtype=torch.float32).to(device)
-    y_test_tensor = torch.tensor(y_test, dtype=torch.float32).to(device)
-
-    dataset_train = TensorDataset(x_train_tensor, y_train_tensor)
-    train_loader = DataLoader(dataset_train, batch_size=4096, shuffle=True)
-
-    dataset_val = TensorDataset(x_val_tensor, y_val_tensor)
-    val_loader = DataLoader(dataset_val, batch_size=4096, shuffle=False)
-
-    dataset_test = TensorDataset(x_test_tensor, y_test_tensor)
-    test_loader = DataLoader(dataset_test, batch_size=4096, shuffle=False)
-
-
+    num_features = x_train.shape[1]
+    learning_rate = 0.0001
+    
     if args.train:
-
-        # Build and compile the model
-        dnn_model, criterion, optimizer = build_and_compile_model(x_train, lr=0.0001)
+        
+        dnn_model = CustomModel(num_features)
+        optimizer = optim.Adam(dnn_model.parameters(), lr=learning_rate)
         dnn_model.to(device)
         nepochs = 5
-    
-        for epoch in range(nepochs):
-            dnn_model.train()
-            train_loss = 0.0
-            for batch_x, batch_y in train_loader:
-                optimizer.zero_grad()
-                outputs = dnn_model(batch_x)
-                loss = criterion(outputs, batch_y)
-                loss.backward()
-                optimizer.step()
-                train_loss += loss.item() * batch_x.size(0)
-            train_loss /= len(train_loader.dataset)
+        n_batches = 0 
 
-            # Evaluate on validation set
-            dnn_model.eval()
-            val_loss = 0.0
-            with torch.no_grad():
-                for batch_x, batch_y in val_loader:
-                    outputs = dnn_model(batch_x)
-                    loss = criterion(outputs, batch_y)
-                    val_loss += loss.item() * batch_x.size(0)
-                val_loss /= len(val_loader.dataset)
-
+        for epoch in range(nepochs): 
+            train_loss = train_loop(train_loader, dnn_model, optimizer) 
+            val_loss   = val_loop(val_loader, dnn_model) 
+            
             print(f'Epoch [{epoch+1}/{nepochs}], Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}')
             name_ckpt = dir_path+"DNN_e{:03d}".format(epoch+1)+"_trainLoss{:.5f}".format(train_loss)+"_valLoss{:.5f}".format(val_loss)+".pt"
 
@@ -188,9 +236,13 @@ def main():
                         'train_loss': train_loss,
                         'val_Loss': val_loss,
                         }, name_ckpt)
-            
+
+
+        pass 
+
     if args.retrain:
-        dnn_model, criterion, optimizer = build_and_compile_model_retrain(x_train, lr=0.0001)
+        dnn_model = CustomModel(num_features)
+        optimizer = optim.Adam(dnn_model.parameters(), lr=learning_rate)        
         dnn_model.to(device)
         # Load checkpoint
         ckpt_to_use = get_latest_file(dir_path, DNNorRetrain='DNN')
@@ -201,41 +253,24 @@ def main():
         ## nepochs to retrain
         nepochs = 5
 
-        for epoch in range(nepochs):
-            dnn_model.train()
-            train_loss = 0.0
-            for batch_x, batch_y in train_loader:
-                optimizer.zero_grad()
-                outputs = dnn_model(batch_x)
-                loss = criterion(outputs, batch_y)
-                loss.backward()
-                optimizer.step()
-                train_loss += loss.item() * batch_x.size(0)
-            train_loss /= len(train_loader.dataset)
+        for epoch in range(nepochs): 
+            retrain_loss = retrain_loop(train_loader, dnn_model, optimizer)
+            reval_loss   = reval_loop(val_loader, dnn_model) 
 
-            # Evaluate on validation set
-            dnn_model.eval()
-            val_loss = 0.0
-            with torch.no_grad():
-                for batch_x, batch_y in val_loader:
-                    outputs = dnn_model(batch_x)
-                    loss = criterion(outputs, batch_y)
-                    val_loss += loss.item() * batch_x.size(0)
-                val_loss /= len(val_loader.dataset)
+            print(f'Epoch [{epoch+1}/{nepochs}], Train Loss: {retrain_loss:.4f}, Val Loss: {reval_loss:.4f}')
+            name_ckpt = dir_path+"Retrain_DNN_e{:03d}".format(epoch+1)+"_trainLoss{:.5f}".format(retrain_loss)+"_valLoss{:.5f}".format(reval_loss)+".pt"
 
-            print(f'Epoch [{epoch+1}/{nepochs}], Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}')
-            name_ckpt = dir_path+"Retrain_DNN_e{:03d}".format(epoch+1)+"_trainLoss{:.5f}".format(train_loss)+"_valLoss{:.5f}".format(val_loss)+".pt"
             torch.save({'epoch': epoch+1,
                         'model_state_dict': dnn_model.state_dict(),
                         'optimizer_state_dict': optimizer.state_dict(),
-                        'train_loss': train_loss,
-                        'val_Loss': val_loss,
+                        'train_loss': retrain_loss,
+                        'val_Loss': reval_loss,
                         }, name_ckpt)
-        pass
+        pass 
+
 
     if args.test:
-
-        dnn_model, criterion, _ = build_and_compile_model_retrain(x_train, lr=0.0001)
+        dnn_model = CustomModel(num_features)
         dnn_model.to(device)
 
 
@@ -245,30 +280,31 @@ def main():
 
         dnn_model.eval()
 
-        out = [] 
-        with torch.no_grad():
-            for batch_x, batch_y in test_loader:
-                out.append(dnn_model(batch_x).detach().cpu().numpy())
+        predictions, y, x_tests = [], [], []
+        for batch, data in enumerate(test_loader):
+            x_test = data[:, :-1].float()
+            y_test = data[:, -1]
+            out = dnn_model(x_test).detach().cpu().numpy()
+            predictions.append(out)
+            y.append(y_test.cpu().detach().numpy())
+            x_tests.append(x_test.cpu().detach().numpy())
+            
 
-
-        out = np.array(out)
-        out1 = np.concatenate(out, axis=0)
-        output = np.concatenate(out1, axis=0)
+        y = np.concatenate(y)
+        predictions = np.concatenate(predictions)
+        out = np.concatenate(predictions, axis=0)
+        # output = np.concatenate(out1, axis=0)
         
-        np.save(dir_path + '/trueResponse.npy', y_test)
-        np.save(dir_path + '/predResponse.npy', output)
+        x_test = np.concatenate(x_tests)
+
+        np.save(dir_path + '/trueResponse.npy', y)
+        np.save(dir_path + '/predResponse.npy', out)
         np.save(dir_path + '/x_test.npy', x_test)
 
-        # all_tested = np.column_stack((x_test, y_test)) 
-        # all_tested = np.column_stack((all_tested, out)) 
-        # np.save(dir_path + '/all_tested.npy', all_tested)
         pass
-
-
-    ## test
-    return
-
-
+    
+    
+    return 
 
 
 
@@ -276,3 +312,6 @@ def main():
 if __name__ == '__main__':
     main()
     pass
+
+    
+
