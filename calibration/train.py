@@ -7,32 +7,40 @@ import math
 from torch.utils.data import TensorDataset, DataLoader
 import argparse
 import glob
+import matplotlib.pyplot as plt
+
 
 parser = argparse.ArgumentParser(description='Perform signal injection test.')
 parser.add_argument('--train',    dest='train',    action='store_const', const=True, default=False, help='Train NN  (default: False)')
 parser.add_argument('--retrain',  dest='retrain',  action='store_const', const=True, default=False, help='Retrain NN  (default: False)')
 parser.add_argument('--test',     dest='test',     action='store_const', const=True, default=False, help='Test NN   (default: False)')
-parser.add_argument('--closure',  dest='closure',  action='store_const', const=True, default=False, help='Closure')
-parser.add_argument('--weight',   dest='weight',   type=int, default=0, help='Weight: 0: no weight 1: response, 2: response wider, 3: energy, 4: log energy')
-parser.add_argument('--outdir',   dest='outdir',   type=str, default='', help='Directory with output is stored')
 
 
 args = parser.parse_args()
+
 
 
 def get_latest_file(directory, DNNorRetrain=''):
     list_of_files = glob.glob(directory+'/'+DNNorRetrain+'_*.pt')
     latest_file = max(list_of_files, key=os.path.getctime)
     return latest_file
-    
+
+
 # Define custom activation functions
 class Swish(nn.Module):
+    def __init__(self):
+        super(Swish, self).__init__()
+
     def forward(self, x):
         return 2*(x * torch.sigmoid(x))
 
 class TanhPlusOne(nn.Module):
+    def __init__(self):
+        super(TanhPlusOne, self).__init__()
+
     def forward(self, x):
         return 2*(torch.tanh(x) + 1)
+
 
 
 # Define LGK loss function
@@ -59,10 +67,11 @@ def lgk_loss_function_1(y_true, y_pred):
 
 
 # Define the model architecture
-class CustomModel(nn.Module):
+class PUMitigation(nn.Module):
     def __init__(self, inputsize):
-        super(CustomModel, self).__init__()
+        super(PUMitigation, self).__init__()
         self.flatten = nn.Flatten()
+        # self.dropout = nn.Dropout(0.2)
         self.fc1 = nn.Linear(in_features=inputsize, out_features=256)
         self.swish1 = Swish()
         self.fc2 = nn.Linear(in_features=256, out_features=128)
@@ -76,6 +85,7 @@ class CustomModel(nn.Module):
 
     def forward(self, x):
         x = self.flatten(x)
+        # x = self.dropout(x)
         x = self.swish1(self.fc1(x))
         x = self.swish2(self.fc2(x))
         x = self.swish3(self.fc3(x))
@@ -91,23 +101,23 @@ def train_loop(dataloader, model, optimizer):
     loss_tot = 0
     n_batches = 0
     for batch, data in enumerate(dataloader):
-        
+
         # Compute prediction and loss
         x = data[:, :-1].float()
         y = data[:, -1]
 
-        # if batch==0: print(x) 
+        # if batch==0: print(x)
 
-    
-        out = model(x)
-        
-        loss = lgk_loss_function(out, y)
         optimizer.zero_grad()
+        out = model(x)
+
+        loss = lgk_loss_function(y, out)
+
         loss.backward()
         optimizer.step()
-        
+
         loss_tot += loss.item()
-        n_batches +=1 
+        n_batches +=1
 
     loss_tot /= n_batches
     return loss_tot
@@ -123,11 +133,11 @@ def val_loop(dataloader, model):
             x = data[:, :-1].float()
             y = data[:, -1]
             out = model(x)
-            loss = lgk_loss_function(out,y)
+            loss = lgk_loss_function(y, out)
             loss_tot += loss.item()
-            n_batches +=1 
+            n_batches +=1
     loss_tot /= n_batches
-    
+
     return loss_tot
 
 def retrain_loop(dataloader, model, optimizer):
@@ -139,15 +149,16 @@ def retrain_loop(dataloader, model, optimizer):
         # Compute prediction and loss
         x = data[:, :-1].float()
         y = data[:, -1]
-        out = model(x)
-        
-        loss = lgk_loss_function_1(out, y)
         optimizer.zero_grad()
+        out = model(x)
+
+        loss = lgk_loss_function_1(y, out)
+
         loss.backward()
         optimizer.step()
-        
+
         loss_tot += loss.item()
-        n_batches +=1 
+        n_batches +=1
 
     loss_tot /= n_batches
     return loss_tot
@@ -163,14 +174,13 @@ def reval_loop(dataloader, model):
             x = data[:, :-1].float()
             y = data[:, -1]
             out = model(x)
-            loss = lgk_loss_function_1(out,y)
+            loss = lgk_loss_function_1(y, out)
             loss_tot += loss.item()
-            n_batches +=1 
+            n_batches +=1
     loss_tot /= n_batches
-    
+
     return loss_tot
     
-
 def main():
 
     dir_path = "ckpts/"
@@ -179,7 +189,7 @@ def main():
     except ImportError:
         print("{} already exists".format(dir_path))
     pass
-    
+
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     # train dataset
@@ -214,49 +224,62 @@ def main():
 
     num_features = x_train.shape[1]
     learning_rate = 0.0001
-    
+
+
     if args.train:
-        
-        dnn_model = CustomModel(num_features)
+
+        dnn_model = PUMitigation(num_features)
         optimizer = optim.Adam(dnn_model.parameters(), lr=learning_rate)
         dnn_model.to(device)
         nepochs = 5
-        n_batches = 0 
+        n_batches = 0
 
-        for epoch in range(nepochs): 
-            train_loss = train_loop(train_loader, dnn_model, optimizer) 
-            val_loss   = val_loop(val_loader, dnn_model) 
-            
+        # from torchsummary import summary
+        # print(summary(dnn_model, (num_features,)))
+
+        loss_train = []
+        loss_val = []
+        for epoch in range(nepochs):
+            train_loss = train_loop(train_loader, dnn_model, optimizer)
+            val_loss   = val_loop(val_loader, dnn_model)
+            loss_train.append(train_loss)
+            loss_val.append(val_loss)
             print(f'Epoch [{epoch+1}/{nepochs}], Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}')
             name_ckpt = dir_path+"DNN_e{:03d}".format(epoch+1)+"_trainLoss{:.5f}".format(train_loss)+"_valLoss{:.5f}".format(val_loss)+".pt"
 
             torch.save({'epoch': epoch+1,
-                        'model_state_dict': dnn_model.state_dict(),
-                        'optimizer_state_dict': optimizer.state_dict(),
-                        'train_loss': train_loss,
-                        'val_Loss': val_loss,
-                        }, name_ckpt)
+                        'model_state_dict': dnn_model.state_dict(), 'optimizer_state_dict': optimizer.state_dict(),
+                        'train_loss': train_loss, 'val_Loss': val_loss, }, name_ckpt)
 
-
-        pass 
+        fig, ax = plt.subplots()
+        ax.plot(loss_train, label='loss')
+        ax.plot(loss_val, label='val_loss')
+        ax.set_xlabel('Epoch')
+        plt.legend()
+        plt.grid(True)
+        plt.savefig(dir_path + '/Losses_train_leakiness.png')
+        plt.clf()
 
     if args.retrain:
-        dnn_model = CustomModel(num_features)
-        optimizer = optim.Adam(dnn_model.parameters(), lr=learning_rate)        
+        dnn_model = PUMitigation(num_features)
+        optimizer = optim.Adam(dnn_model.parameters(), lr=learning_rate)
         dnn_model.to(device)
         # Load checkpoint
         ckpt_to_use = get_latest_file(dir_path, DNNorRetrain='DNN')
         checkpoint = torch.load(ckpt_to_use)
         dnn_model.load_state_dict(checkpoint['model_state_dict']) ## load model
-        optimizer.load_state_dict(checkpoint['optimizer_state_dict']) ## load optimizer 
+        optimizer.load_state_dict(checkpoint['optimizer_state_dict']) ## load optimizer
         dnn_model.to(device)
         ## nepochs to retrain
         nepochs = 5
 
-        for epoch in range(nepochs): 
+        loss_retrain = []
+        loss_reval = []
+        for epoch in range(nepochs):
             retrain_loss = retrain_loop(train_loader, dnn_model, optimizer)
-            reval_loss   = reval_loop(val_loader, dnn_model) 
-
+            reval_loss   = reval_loop(val_loader, dnn_model)
+            loss_retrain.append(retrain_loss)
+            loss_reval.append(reval_loss)
             print(f'Epoch [{epoch+1}/{nepochs}], Train Loss: {retrain_loss:.4f}, Val Loss: {reval_loss:.4f}')
             name_ckpt = dir_path+"Retrain_DNN_e{:03d}".format(epoch+1)+"_trainLoss{:.5f}".format(retrain_loss)+"_valLoss{:.5f}".format(reval_loss)+".pt"
 
@@ -266,7 +289,16 @@ def main():
                         'train_loss': retrain_loss,
                         'val_Loss': reval_loss,
                         }, name_ckpt)
-        pass 
+
+        fig, ax = plt.subplots()
+        ax.plot(loss_train, label='loss')
+        ax.plot(loss_val, label='val_loss')
+        ax.set_xlabel('Epoch')
+        plt.legend()
+        plt.grid(True)
+        plt.savefig(dir_path + '/Losses_final.png')
+        plt.clf()
+        pass
 
 
     if args.test:
@@ -274,7 +306,7 @@ def main():
         dnn_model.to(device)
 
 
-        ckpt_to_use = get_latest_file(dir_path, DNNorRetrain='Retrain')
+        ckpt_to_use = get_latest_file(dir_path, DNNorRetrain='DNN')
         checkpoint = torch.load(ckpt_to_use)
         dnn_model.load_state_dict(checkpoint['model_state_dict']) ## load model
 
@@ -288,13 +320,13 @@ def main():
             predictions.append(out)
             y.append(y_test.cpu().detach().numpy())
             x_tests.append(x_test.cpu().detach().numpy())
-            
+
 
         y = np.concatenate(y)
         predictions = np.concatenate(predictions)
         out = np.concatenate(predictions, axis=0)
         # output = np.concatenate(out1, axis=0)
-        
+
         x_test = np.concatenate(x_tests)
 
         np.save(dir_path + '/trueResponse.npy', y)
@@ -302,9 +334,9 @@ def main():
         np.save(dir_path + '/x_test.npy', x_test)
 
         pass
-    
-    
-    return 
+
+
+    return
 
 
 
@@ -312,6 +344,3 @@ def main():
 if __name__ == '__main__':
     main()
     pass
-
-    
-
