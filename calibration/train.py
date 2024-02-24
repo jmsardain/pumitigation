@@ -180,7 +180,7 @@ def reval_loop(dataloader, model):
     loss_tot /= n_batches
 
     return loss_tot
-    
+
 def main():
 
     dir_path = "ckpts/"
@@ -306,7 +306,7 @@ def main():
         dnn_model.to(device)
 
 
-        ckpt_to_use = get_latest_file(dir_path, DNNorRetrain='DNN')
+        ckpt_to_use = get_latest_file(dir_path, DNNorRetrain='Retrain')
         checkpoint = torch.load(ckpt_to_use)
         dnn_model.load_state_dict(checkpoint['model_state_dict']) ## load model
 
