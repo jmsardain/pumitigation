@@ -302,7 +302,7 @@ def main():
 
 
     if args.test:
-        dnn_model = CustomModel(num_features)
+        dnn_model = PUMitigation(num_features)
         dnn_model.to(device)
 
 
