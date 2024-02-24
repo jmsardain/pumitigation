@@ -291,8 +291,8 @@ def main():
                         }, name_ckpt)
 
         fig, ax = plt.subplots()
-        ax.plot(loss_train, label='loss')
-        ax.plot(loss_val, label='val_loss')
+        ax.plot(loss_retrain, label='loss')
+        ax.plot(loss_reval, label='val_loss')
         ax.set_xlabel('Epoch')
         plt.legend()
         plt.grid(True)
