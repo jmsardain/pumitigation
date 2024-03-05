@@ -1,20 +1,20 @@
 //////////////////////////////////////////////////////////
 // This class has been automatically generated on
-// Fri Jan 19 09:17:39 2024 by ROOT version 6.30/02
+// Wed Dec  6 16:27:47 2023 by ROOT version 6.28/10
 // from TTree ClusterTree/ClusterTree
 // found on file: /data/jmsardain/JetCalib/Akt4EMTopo.topo-cluster.root
 //////////////////////////////////////////////////////////
 
-#ifndef makeTree_h
-#define makeTree_h
+#ifndef HistoMaker_h
+#define HistoMaker_h
 
 #include <TROOT.h>
 #include <TChain.h>
 #include <TFile.h>
-
+#include <iostream>
 // Header file for the classes stored in the TTree if any.
 
-class makeTree {
+class HistoMaker {
 public :
    TTree          *fChain;   //!pointer to the analyzed TTree or TChain
    Int_t           fCurrent; //!current Tree number in a TChain
@@ -205,21 +205,21 @@ public :
    TBranch        *b_cluster_MASS;   //!
    TBranch        *b_cluster_SECOND_TIME;   //!
 
-   makeTree(TTree *tree=0);
-   virtual ~makeTree();
+   HistoMaker(TTree *tree=0);
+   virtual ~HistoMaker();
    virtual Int_t    Cut(Long64_t entry);
    virtual Int_t    GetEntry(Long64_t entry);
    virtual Long64_t LoadTree(Long64_t entry);
    virtual void     Init(TTree *tree);
-   virtual void     Loop(TString CalibOrPU);
+   virtual void     Loop();
    virtual Bool_t   Notify();
    virtual void     Show(Long64_t entry = -1);
 };
 
 #endif
 
-#ifdef makeTree_cxx
-makeTree::makeTree(TTree *tree) : fChain(0)
+#ifdef HistoMaker_cxx
+HistoMaker::HistoMaker(TTree *tree) : fChain(0) 
 {
 // if parameter tree is not specified (or zero), connect the file
 // used to generate this class and read the Tree.
@@ -234,19 +234,19 @@ makeTree::makeTree(TTree *tree) : fChain(0)
    Init(tree);
 }
 
-makeTree::~makeTree()
+HistoMaker::~HistoMaker()
 {
    if (!fChain) return;
    delete fChain->GetCurrentFile();
 }
 
-Int_t makeTree::GetEntry(Long64_t entry)
+Int_t HistoMaker::GetEntry(Long64_t entry)
 {
 // Read contents of entry.
    if (!fChain) return 0;
    return fChain->GetEntry(entry);
 }
-Long64_t makeTree::LoadTree(Long64_t entry)
+Long64_t HistoMaker::LoadTree(Long64_t entry)
 {
 // Set the environment to read one entry
    if (!fChain) return -5;
@@ -259,7 +259,7 @@ Long64_t makeTree::LoadTree(Long64_t entry)
    return centry;
 }
 
-void makeTree::Init(TTree *tree)
+void HistoMaker::Init(TTree *tree)
 {
    // The Init() function is called when the selector needs to initialize
    // a new tree or chain. Typically here the branch addresses and branch
@@ -368,7 +368,7 @@ void makeTree::Init(TTree *tree)
    Notify();
 }
 
-Bool_t makeTree::Notify()
+Bool_t HistoMaker::Notify()
 {
    // The Notify() function is called when a new file is opened. This
    // can be either for a new TTree in a TChain or when when a new TTree
@@ -379,18 +379,18 @@ Bool_t makeTree::Notify()
    return kTRUE;
 }
 
-void makeTree::Show(Long64_t entry)
+void HistoMaker::Show(Long64_t entry)
 {
 // Print contents of entry.
 // If entry is not specified, print current entry
    if (!fChain) return;
    fChain->Show(entry);
 }
-Int_t makeTree::Cut(Long64_t entry)
+Int_t HistoMaker::Cut(Long64_t entry)
 {
 // This function may be called from Loop.
 // returns  1 if entry is accepted.
 // returns -1 otherwise.
    return 1;
 }
-#endif // #ifdef makeTree_cxx
+#endif // #ifdef HistoMaker_cxx

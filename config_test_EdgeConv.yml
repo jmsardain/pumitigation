@@ -1,0 +1,10 @@
+data:
+  path_to_test: 'data/graphs_NewDataset_test.pt'
+  path_classifier: '/home/jmsardain/JetCalib/PUMitigation/final/ckpts/EdgeConv/EdgeConv_e050_losstrain6.331_lossval8.339.pt'
+  path_to_save: "/home/jmsardain/JetCalib/PUMitigation/final/ckpts/EdgeConv/"
+  model_name: "EdgeConv_"
+
+architecture:
+  batch_size: 1000
+  n_epochs: 11
+  choose_model: "EdgeConv" ## LundNet, GATNet, GINNet, EdgeGinNet, PNANet

@@ -1,0 +1,12 @@
+data:
+  path_to_train: 'data/graphs_NewDataset_train.pt'
+  path_to_test: 'data/graphs_NewDataset_test.pt'
+  size_train: 0.80
+  path_to_save: "/home/jmsardain/JetCalib/PUMitigation/final/ckpts/EdgeConv/"
+  model_name: "EdgeConv_"
+
+architecture:
+  batch_size: 1000
+  n_epochs: 50
+  learning_rate: 0.0005
+  choose_model: "EdgeConv" ## LundNet, GATNet, GINNet, EdgeGinNet, PNANet

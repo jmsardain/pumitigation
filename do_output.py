@@ -40,7 +40,7 @@ def main():
     ## load graphs
     path_to_test = config['data']['path_to_test']
     #graph_list_test  = torch.load('data/graphs_test.pt')
-    graph_list_test  = torch.load(path_to_test)
+    graph_list_test  = torch.load('data/graphs_NewDataset_test.pt')
 
     #### in case you used some node features ####
     Use_some_Edge_attributes = False
@@ -69,8 +69,8 @@ def main():
     # path_classifier = "ckpt/PU_batch3000Dropout_Complex_varlr_GATConv_e011_losstrain49.289_lossval26.954.pt"
     # path_classifier = "ckpt/PU_batch3000Dropout_Complex_varlr_GATConv_e100_losstrain44.974_lossval48.839.pt"
     path_classifier = config['data']['path_classifier']
-    model.load_state_dict(torch.load(path_classifier, map_location=torch.device('cpu')))
-    #model.load_state_dict(torch.load(path_classifier))
+    #model.load_state_dict(torch.load(path_classifier, map_location=torch.device('cpu')))
+    model.load_state_dict(torch.load(path_classifier))
 
     # if Use_some_Edge_attributes:
     #     deg = torch.zeros(50, dtype=torch.long)
@@ -81,12 +81,6 @@ def main():
     #     model = PNAConv_EdgeAttrib(16,deg)
 
     model.to(device)
-
-    model_NN = NN_weights()
-    path_NN = config['data']['path_NN']
-    model_NN.load_state_dict(torch.load(path_NN, map_location=torch.device('cpu')))
-    model_NN.to(device)
-
 
     #print('Prepare DataLoaders')
     ## create DataLoaders
@@ -101,6 +95,7 @@ def main():
     Cluster_E = torch.tensor([])
     Cluster_Eta = torch.tensor([])
     Cluster_Phi = torch.tensor([])
+    
     jetCnt = torch.tensor([])
     eventNumber = torch.tensor([])
 
@@ -112,8 +107,10 @@ def main():
     truthJetE = torch.tensor([])
     truthJetPt = torch.tensor([])
     clusterECalib = torch.tensor([])
+    ClusterPt = torch.tensor([])
     ClusterENGCALIBTOT = torch.tensor([])
-    nodes_out_NN = torch.tensor([])
+    r_e_predicted = torch.tensor([])
+
 
     # clusterE  jetRawE jetCnt score
 
@@ -126,21 +123,6 @@ def main():
             #     out = model(data.x, data.edge_index, data.edge_attr)
             # else:
             #     out = model(data.x, data.edge_index)
-
-            out = model(data.x, data.edge_index)
-            labels_prev = torch.tensor(data.y, dtype=torch.float).to(device)
-            labels = torch.reshape(labels_prev, (int(list(labels_prev.shape)[0]),1))
-            clusterE_prev = data.x[:,0]
-            clusterE_sum = (data.clusterE_sum) / 3
-            clusterE_sum = torch.reshape(clusterE_sum, (int(list(clusterE_sum.shape)[0]),1))
-            clusterE_prev = torch.reshape(clusterE_prev, (int(list(clusterE_prev.shape)[0]),1))
-            #in_NN = torch.cat((out.clone().detach(), clusterE_prev.clone().detach()), 1)
-            in_NN = torch.cat((out.clone().detach(), clusterE_prev.clone().detach(), clusterE_sum.clone().detach()), 1)
-            out_NN = model_NN( in_NN.to(device) )
-            out_NN = torch.reshape(out_NN, (int(list(labels.shape)[0]),1))
-            nodes_out_NN = torch.cat((nodes_out_NN.clone().detach(), out_NN.clone().detach().cpu()), 0)
-            
-            
             out = model(data.x, data.edge_index)
             out = out.view(-1, out.shape[-1])
 
@@ -187,7 +169,7 @@ def main():
             jetRawE_temp = torch.tensor(data.JetRawE , dtype=torch.float).cpu()#to(device)
             jetRawE_temp = torch.reshape(jetRawE_temp, (int(list(jetRawE_temp.shape)[0]),1))
             jetRawE = torch.cat((jetRawE.clone().detach(), jetRawE_temp.clone().detach().cpu()), 0)
-            
+
             ## 'jetRawPt'
             jetRawPt_temp = torch.tensor(data.JetRawPt , dtype=torch.float).cpu()#to(device)
             jetRawPt_temp = torch.reshape(jetRawPt_temp, (int(list(jetRawPt_temp.shape)[0]),1))
@@ -208,15 +190,28 @@ def main():
             clusterECalib_temp = torch.reshape(clusterECalib_temp, (int(list(clusterECalib_temp.shape)[0]),1))
             clusterECalib = torch.cat((clusterECalib.clone().detach(), clusterECalib_temp.clone().detach().cpu()), 0)
 
-             ## 'clusterENGCalibTOT'
+            ## 'clusterENGCalibTOT'
             clusterENGCalibTOT_temp = torch.tensor(data.ClusterENGCALIBTOT , dtype=torch.float).cpu()#to(device)
             clusterENGCalibTOT_temp = torch.reshape(clusterENGCalibTOT_temp, (int(list(clusterENGCalibTOT_temp.shape)[0]),1))
             ClusterENGCALIBTOT = torch.cat((ClusterENGCALIBTOT.clone().detach(), clusterENGCalibTOT_temp.clone().detach().cpu()), 0)
 
+            ## clusterPt
+            clusterPt_temp = torch.tensor(data.ClusterPt , dtype=torch.float).cpu()#to(device)
+            clusterPt_temp = torch.reshape(clusterPt_temp, (int(list(clusterPt_temp.shape)[0]),1))
+            ClusterPt = torch.cat((ClusterPt.clone().detach(), clusterPt_temp.clone().detach().cpu()), 0)
+            
             ## 'jetCalE'
             jetCalE_temp = torch.tensor(data.JetCalE , dtype=torch.float).cpu()#to(device)
             jetCalE_temp = torch.reshape(jetCalE_temp, (int(list(jetCalE_temp.shape)[0]),1))
             jetCalE = torch.cat((jetCalE.clone().detach(), jetCalE_temp.clone().detach().cpu()), 0)
+
+            
+
+
+            ## predicted response
+            r_e_predicted_temp = torch.tensor(data.REPredicted , dtype=torch.float).cpu()#to(device)
+            r_e_predicted_temp = torch.reshape(r_e_predicted_temp, (int(list(r_e_predicted_temp.shape)[0]),1))
+            r_e_predicted = torch.cat((r_e_predicted.clone().detach(), r_e_predicted_temp.clone().detach().cpu()), 0)
 
 
             # print("jetRawE:",len(jetRawE) ," jetCnt:",len(jetCnt)," nodes_out:",len(nodes_out)  )
@@ -230,14 +225,15 @@ def main():
     truthJetE = torch.squeeze(truthJetE)
     truthJetPt = torch.squeeze(truthJetPt)
     jetCalE = torch.squeeze(jetCalE)
+    r_e_predicted = torch.squeeze(r_e_predicted)
     Cluster_E = torch.squeeze(Cluster_E)
+    ClusterPt = torch.squeeze(ClusterPt)
     clusterECalib = torch.squeeze(clusterECalib)
     ClusterENGCALIBTOT = torch.squeeze(ClusterENGCALIBTOT)
 
     labels_test = torch.squeeze(labels_test)
     nodes_out = torch.squeeze(nodes_out)
-    nodes_out_NN = torch.squeeze(nodes_out_NN)
-    
+
     jetCnt = jetCnt.detach().cpu().numpy()
     eventNumber = eventNumber.detach().cpu().numpy()
     jetRawE = jetRawE.detach().cpu().numpy()
@@ -245,15 +241,16 @@ def main():
     truthJetE = truthJetE.detach().cpu().numpy()
     truthJetPt = truthJetPt.detach().cpu().numpy()
     jetCalE = jetCalE.detach().cpu().numpy()
+    r_e_predicted = r_e_predicted.detach().cpu().numpy()
     Cluster_E = Cluster_E.detach().cpu().numpy()
     Cluster_Eta = Cluster_Eta.detach().cpu().numpy()
     Cluster_Phi = Cluster_Phi.detach().cpu().numpy()
+    Cluster_Pt = ClusterPt.detach().cpu().numpy()
     clusterECalib = clusterECalib.detach().cpu().numpy()
     ClusterENGCALIBTOT = ClusterENGCALIBTOT.detach().cpu().numpy()
 
     labels_test = labels_test.detach().cpu().numpy()
     nodes_out = nodes_out.detach().cpu().numpy()
-    nodes_out_NN = nodes_out_NN.detach().cpu().numpy()
 
 
     df_out = pd.DataFrame()
@@ -270,12 +267,13 @@ def main():
     df_out['clusterE'] = Cluster_E
     df_out['clusterEta'] = Cluster_Eta
     df_out['clusterPhi'] = Cluster_Phi
+    df_out['clusterPt'] = ClusterPt
     df_out['clusterECalib'] = clusterECalib
     df_out['cluster_ENG_CALIB_TOT'] = ClusterENGCALIBTOT
+    df_out['r_e_predicted'] = r_e_predicted
     ## labels and scores
     df_out['labels'] = labels_test
     df_out['score'] = nodes_out
-    df_out['score_NN'] = nodes_out_NN
 
     ## now is necesary to undone the normalization
     # load dictionary with means and std
@@ -283,26 +281,25 @@ def main():
         loaded_dict = pickle.load(f)
 
     # norm_variables = ['clusterE', 'clusterEta', 'clusterPhi'] # ['ClusterE','ClusterEta']
- 
 
-    norm_variables = ["clusterE", "clusterEta", 'clusterPhi', 'jetRawE', # "nPrimVtx", "avgMu", 
-                      # "cluster_ENG_FRAC_EM", "cluster_LATERAL", "cluster_LONGITUDINAL", 
+
+    norm_variables = ["clusterE", "clusterEta", 'clusterPhi', "jetRawE" # "nPrimVtx", "avgMu",
+                      # "cluster_ENG_FRAC_EM", "cluster_LATERAL", "cluster_LONGITUDINAL",
                       # "cluster_PTD", "cluster_ISOLATION", "zL", "zT", "zRel",'diffEta',
                       # "cluster_CENTER_LAMBDA", "cluster_FIRST_ENG_DENS",
                       # "cluster_SECOND_TIME", "cluster_SIGNIFICANCE",'cluster_CENTER_MAG', "jetRawE"
                      ]
-    logged_variables = ["clusterE", "jetRawE", 
+    logged_variables = ["clusterE", "jetRawE",
                         # "cluster_CENTER_LAMBDA", "cluster_FIRST_ENG_DENS",
-                        # "cluster_SECOND_TIME", "cluster_SIGNIFICANCE",'cluster_CENTER_MAG', 
+                        # "cluster_SECOND_TIME", "cluster_SIGNIFICANCE",'cluster_CENTER_MAG',
                        ]
     for field_name in norm_variables:
         df_out[field_name] = undone_Norm(df_out[field_name], loaded_dict[field_name])
-        if field_name in logged_variables: 
+        if field_name in logged_variables:
             df_out[field_name] = np.exp(df_out[field_name])
-    #df_out['clusterEexp'] = np.exp(df_out['clusterE'])
-    
-    
+    # df_out['clusterEexp'] = np.exp(df_out['clusterE'])
     df_out['Scores'] = 1 - df_out['score']
+    df_out['clusterEDNN'] = df_out['clusterE']  / r_e_predicted
 
 
 

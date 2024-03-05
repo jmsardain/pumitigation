@@ -9,7 +9,6 @@ import torch
 import yaml
 from torch_geometric.data import DataListLoader, DataLoader
 from torch_geometric.utils import degree
-from sklearn.model_selection import train_test_split
 
 from utils import *
 from models import *
@@ -33,22 +32,15 @@ def main():
     path_to_train = config['data']['path_to_train']
     path_to_test = config['data']['path_to_test']
 
-    print("................",path_to_train)
-    
     graph_list_train = torch.load(path_to_train)
     graph_list_test  = torch.load(path_to_test)
 
-    print(len(graph_list_train) )
 
     ## create validation dataset // I think is better to create validation dataset here.
     size_train = config['data']['size_train']
-    #graph_list_val = graph_list_train[int(len(graph_list_train)*size_train) : int(len(graph_list_train))]
-    #graph_list_train = graph_list_train[0 : int(len(graph_list_train)*size_train) ]
-    #graph_train, graphs_test = torch.utils.data.random_split(graph_list_train, [size_train, 1-size_train], generator=generator1)
-    
-    graph_list_val, graph_list_train = train_test_split(graph_list_train, test_size = size_train, random_state = 144)
+    graph_list_val = graph_list_train[int(len(graph_list_train)*size_train) : int(len(graph_list_train))]
+    graph_list_train = graph_list_train[0 : int(len(graph_list_train)*size_train) ]
 
-    
     print('Prepare model')
     choose_model = config['architecture']['choose_model']
     ## load model
@@ -67,8 +59,10 @@ def main():
     ## define optimizer
     learning_ratio = config['architecture']['learning_rate']
     optimizer = optim.Adam(model.parameters(), lr=learning_ratio)
-    optimizer2 = optim.Adam(model.parameters(), lr=learning_ratio*2)
-    optimizer3 = optim.Adam(model.parameters(), lr=learning_ratio*3)
+    # optimizer2 = optim.Adam(model.parameters(), lr=learning_ratio*2)
+    # optimizer3 = optim.Adam(model.parameters(), lr=learning_ratio*3)
+
+
 
 
     print('Prepare DataLoaders')

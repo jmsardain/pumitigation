@@ -8,6 +8,53 @@ from torch_geometric.nn import GCNConv
 from torch_geometric.nn import SplineConv, global_mean_pool, DataParallel, EdgeConv, GATConv, GINConv, PNAConv
 import torch.nn.functional as F
 
+# Define custom activation functions
+class Swish(nn.Module):
+    def __init__(self):
+        super(Swish, self).__init__()
+
+    def forward(self, x):
+        return 2*(x * torch.sigmoid(x))
+
+class TanhPlusOne(nn.Module):
+    def __init__(self):
+        super(TanhPlusOne, self).__init__()
+
+    def forward(self, x):
+        return 2*(torch.tanh(x) + 1)
+
+# Define the model architecture
+class PUMitigation(nn.Module):
+    def __init__(self, inputsize):
+        super(PUMitigation, self).__init__()
+        self.flatten = nn.Flatten()
+        # self.dropout = nn.Dropout(0.2)
+        self.fc1 = nn.Linear(in_features=inputsize, out_features=256)
+        self.swish1 = Swish()
+        self.fc2 = nn.Linear(in_features=256, out_features=128)
+        self.swish2 = Swish()
+        self.fc3 = nn.Linear(in_features=128, out_features=64)
+        self.swish3 = Swish()
+        self.fc4 = nn.Linear(in_features=64, out_features=8)
+        self.swish4 = Swish()
+        self.fc5 = nn.Linear(in_features=8, out_features=1)
+        self.tanhPlusOne = TanhPlusOne()
+        # self.fc6 = nn.Linear(in_features=1, out_features=1)
+
+
+    def forward(self, x):
+        x = self.flatten(x)
+        # x = self.dropout(x)
+        x = self.swish1(self.fc1(x))
+        x = self.swish2(self.fc2(x))
+        x = self.swish3(self.fc3(x))
+        x = self.swish4(self.fc4(x))
+        x = self.tanhPlusOne(self.fc5(x))
+        # x = self.fc6(x)
+        # x = self.mse_activation(self.fc5(x))
+        return x
+
+
 #### GCNModel reviewed
 class GCNModel_2(nn.Module):
     def __init__(self, in_channels, hidden_channels, num_classes):
@@ -481,34 +528,3 @@ class EdgeGinNet(torch.nn.Module):
         x = self.lin(x)
         #print(x.shape)
         return F.sigmoid(x)
-
-
-class NN_weights(nn.Module):
-    def __init__(self):
-        super(NN_weights,self).__init__()
-
-        self.do_dropout = False
-        self.Drop = nn.Dropout( 0.15 ) 
-        self.layer1 = nn.Linear( 3 ,32)   
-        self.layer2 = nn.Linear(32,16) 
-        self.layer3 = nn.Linear(16,1) 
-        #self.layer4 = nn.Linear(N_layer3,1) 
-        #self.layer5 = nn.Linear(N_layer4,1)  
-        self.activationReLU = nn.ReLU()
-        self.activationLeaky = nn.LeakyReLU()
-        self.activation = nn.Sigmoid()
-        self.softmax = nn.Softmax(dim=1)
-
-    def  forward(self,x): 
-        x = self.layer1(x)
-        x = self.activationLeaky(x)
-        if self.do_dropout ==True:
-            x = self.Drop(x)   ###!!!!!!!!!!!!
-        x = self.layer2(x)
-        x = self.activationLeaky(x)
-        if self.do_dropout ==True:
-            x = self.Drop(x)   ###!!!!!!!!!!!!
-        x = self.layer3(x)
-        x = nn.functional.sigmoid(x)
-
-        return 1.25*x

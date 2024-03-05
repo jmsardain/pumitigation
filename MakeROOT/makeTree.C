@@ -6,18 +6,20 @@
 #include <iostream>
 #include <TVector3.h>
 
-void makeTree::Loop(){
+void makeTree::Loop(TString CalibOrPU){
 
   if (fChain == 0) return;
 
 
-  TFile *outputFile = new TFile("output.root", "RECREATE");
+  TFile *outputFile = new TFile("output_"+CalibOrPU+".root", "RECREATE");
   TTree *outputTree = new TTree("ClusterTree", "ntuple");
 
 
   Double_t out_eventNumber;
   Double_t out_clusterE;
   Double_t out_clusterEta;
+  Double_t out_clusterPhi;
+  Double_t out_clusterPt;
   Double_t out_cluster_CENTER_LAMBDA;
   Double_t out_cluster_CENTER_MAG;
   Double_t out_cluster_ENG_FRAC_EM;
@@ -32,7 +34,6 @@ void makeTree::Loop(){
   Double_t out_nPrimVtx;
   Double_t out_avgMu;
   Double_t out_jetCnt;
-  Double_t out_clusterPhi;
   Double_t out_zL;
   Double_t out_zT;
   Double_t out_zRel;
@@ -50,6 +51,7 @@ void makeTree::Loop(){
   outputTree->Branch("clusterE", &out_clusterE, "clusterE/D");
   outputTree->Branch("clusterEta", &out_clusterEta, "clusterEta/D");
   outputTree->Branch("clusterPhi", &out_clusterPhi, "clusterPhi/D");
+  outputTree->Branch("clusterPt", &out_clusterPt, "clusterPt/D");
   outputTree->Branch("cluster_CENTER_LAMBDA", &out_cluster_CENTER_LAMBDA, "cluster_CENTER_LAMBDA/D");
   outputTree->Branch("cluster_CENTER_MAG", &out_cluster_CENTER_MAG, "cluster_CENTER_MAG/D");
   outputTree->Branch("cluster_ENG_FRAC_EM", &out_cluster_ENG_FRAC_EM, "cluster_ENG_FRAC_EM/D");
@@ -86,9 +88,12 @@ void makeTree::Loop(){
     // if (Cut(ientry) < 0) continue;
 
     if(jentry%100000==0) std::cout << "Entry #" << jentry << std::endl;
-    // if (i>100000) break;
+    // if (jentry>1000) break;
     // Get every other jetCnt
-    if(jetCnt%2==0) continue;
+    if(CalibOrPU=="calib"){ if(jetCnt%2==0) { continue; } }
+    if(CalibOrPU=="pu"){ if(jetCnt%2!=0) { continue; } }
+
+
     // Calculate the sum and assign it to the new branch
     TVector3 cluster_vec;
     cluster_vec.SetPtEtaPhi(clusterPt, clusterEta, clusterPhi);
@@ -104,6 +109,8 @@ void makeTree::Loop(){
     out_eventNumber = eventNumber;
     out_clusterE = clusterE;
     out_clusterEta = clusterEta;
+    out_clusterPhi = clusterPhi;
+    out_clusterPt = clusterPt;
     out_cluster_CENTER_LAMBDA = cluster_CENTER_LAMBDA;
     out_cluster_CENTER_MAG = cluster_CENTER_MAG;
     out_cluster_ENG_FRAC_EM = cluster_ENG_FRAC_EM;
@@ -118,14 +125,13 @@ void makeTree::Loop(){
     out_nPrimVtx = nPrimVtx;
     out_avgMu = avgMu;
     out_jetCnt = jetCnt;
-    out_clusterPhi = clusterPhi;
     out_jetCalE = jetCalE;
     out_jetCalEta = jetCalEta;
     out_jetRawE = jetRawE;
     out_jetRawPt = jetRawPt;
     out_truthJetE = truthJetE;
     out_truthJetPt = truthJetPt;
-    out_clusterECalib = clusterECalib;
+    out_clusterECalib = clusterE * cluster_HAD_WEIGHT;
     out_cluster_ENG_CALIB_TOT = cluster_ENG_CALIB_TOT;
     // Fill the output tree
     outputTree->Fill();

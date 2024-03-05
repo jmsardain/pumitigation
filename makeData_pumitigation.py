@@ -10,9 +10,13 @@ import gc
 
 import torch
 from torch_geometric.data import Data
+from torch.utils.data import TensorDataset, DataLoader
 import pickle
 import networkx as nx
 from sklearn.model_selection import train_test_split
+from utils import *
+from models import *
+
 
 def normalize(x, dic, feature):
     mean, std = np.mean(x), np.std(x)
@@ -50,7 +54,7 @@ def main():
 
     # ### New dataset 60 millions
     # filename = uproot.open('/data/jmsardain/JetCalib/Akt4EMTopo.topo-cluster.root')["ClusterTree"]
-    filename = uproot.open('/home/ravinascos/pileup/tets/jad_output/output.root')["ClusterTree"]
+    filename = uproot.open('/home/jmsardain/JetCalib/PUMitigation/final/MakeROOT/output_pu.root')["ClusterTree"]
     df = filename.arrays(library="pd")
     # print(len(df))
     # df = df.head(5000000)
@@ -60,29 +64,31 @@ def main():
     ## sort data
     df.sort_values(by=['eventNumber', 'jetCnt'])
 
-    column_names = ['clusterE', 'clusterEta', 'cluster_CENTER_LAMBDA', 'cluster_CENTER_MAG',
+    column_names = [
+                'clusterE', 'clusterEta', 'cluster_CENTER_LAMBDA', 'cluster_CENTER_MAG',
                 'cluster_ENG_FRAC_EM', 'cluster_FIRST_ENG_DENS', 'cluster_LATERAL', 'cluster_LONGITUDINAL',
                 'cluster_PTD', 'cluster_time', 'cluster_ISOLATION', 'cluster_SECOND_TIME', 'cluster_SIGNIFICANCE',
-                'nPrimVtx', 'avgMu', 'jetCnt', 'clusterPhi', "zL", "zT", "zRel", 'diffEta', ## up to here, we need these features for training
-                'eventNumber', 'jetCalE', 'jetRawE', 'jetRawPt', 'truthJetE', 'truthJetPt', 'clusterECalib', 'cluster_ENG_CALIB_TOT', ## add these features to do comprehensive plots at the end
+                'nPrimVtx', 'avgMu',  'response', ## up until here use these for testing of calibration and add predicted response to graphs!
+                'jetCnt', 'clusterPhi', "zL", "zT", "zRel", 'diffEta', ## up to here, we need these features for training
+                'eventNumber', 'clusterPt', 'jetCalE', 'jetRawE', 'jetRawPt', 'truthJetE', 'truthJetPt', 'clusterECalib', 'cluster_ENG_CALIB_TOT',  ## add these features to do comprehensive plots at the end
                 'labels', ## these are labels, 1 = PU, 0 = signal
                 ]
-    print("total data->",len(df))
-    #print("222222222222",df['jetCnt'][2])
-    df = df[ df['jetCnt']%3 < 0.1 ] 
-    #df = df[ df['jetCnt']%15 < 0.1 ] # small dataset for tests
-    print("selected data->",len(df))
-    #print(df['jetCnt'][2])
 
-    df['labels'] = ((df['cluster_ENG_CALIB_TOT'] < 0.0001) & (df['clusterE'] > 0) ).astype(int)
+    print("total data->",len(df))
+    # df = df[ df['jetCnt']%3 < 0.1 ]
+    df = df[ df['jetCnt']%5 == 0]
+    # df = df[ df['jetCnt']%2 == 0]
+
+    print("selected data->",len(df))
+    df['labels'] = ((df['cluster_ENG_CALIB_TOT'] < 0.0001) & (df['clusterE'] > 0)).astype(int)
     # df['fracE'] = df['clusterE'] / df['jetRawE']
     df['diffEta'] = df['clusterEta'] - df['jetCalEta']
     
+    mask = df.cluster_ENG_CALIB_TOT.values != 0
+    df['response'] = np.where(mask, np.array( df.clusterE.values ) /  np.array( df.cluster_ENG_CALIB_TOT.values ), -1)
     df = df[column_names]
     #df['labels'] = before['labels']
 
-    df['clusterE_copy'] = df['clusterE']
-    
     # print(df["jetRawE"])
 
     os.system('mkdir data')
@@ -103,14 +109,14 @@ def main():
         x, minimum, epsilon = apply_save_log(df[field_name])
         x, mean, std = normalize(x, dic_mean_and_std, field_name)
         df[field_name] = x
-    
+
     # just normalizing
     field_names = ["clusterEta", 'clusterPhi', "nPrimVtx", "avgMu"]
     for field_name in field_names:
         x = df[field_name]
         x, mean, std = normalize(x, dic_mean_and_std, field_name)
         df[field_name] = x
-    
+
     # params between [0, 1]
     # we could also just shift?
     field_names = ["cluster_ENG_FRAC_EM", "cluster_LATERAL", "cluster_LONGITUDINAL",
@@ -119,19 +125,40 @@ def main():
         x = df[field_name]
         x, mean, std = normalize(x, dic_mean_and_std, field_name)
         df[field_name] = x
-    
+
     # special preprocessing
     field_name = "cluster_time"
     x = df[field_name]
     x = np.abs(x)**(1./3.) * np.sign(x)
     x, mean, std = normalize(x,dic_mean_and_std, field_name)
 
-    
-    df[field_name] = x
-    
-    # df.to_csv('')
-    df.to_csv('./input.csv')
+    with open('dict_mean_and_std.pkl', 'wb') as f:
+        pickle.dump(dic_mean_and_std, f)
+    print(dic_mean_and_std)
 
+    df[field_name] = x
+
+    # df.to_csv('')
+    # df.to_csv('./input.csv')
+
+    ## get predicted response for each clusters ..
+    ## here we should use the dataframe created in this code, using the features from clusterE to avgMu
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    testDatasetCalibration = df.to_numpy()
+    x_test_calib = testDatasetCalibration[:, 0:15] ## check makeData_calibration for correct index
+    y_test_calib = testDatasetCalibration[:, 15]
+
+    x_test_tensor_calib = torch.tensor(x_test_calib, dtype=torch.float32).to(device)
+    y_test_tensor_calib = torch.tensor(y_test_calib, dtype=torch.float32).to(device)
+
+    dataset_test_calib = TensorDataset(x_test_tensor_calib, y_test_tensor_calib)
+    test_loader_calib = DataLoader(dataset_test_calib, batch_size=4096, shuffle=False)
+
+    num_features = x_test_calib.shape[1]
+    predicted_response =  getPredictedResponse(num_features, device, 'ckpts/', test_loader_calib)
+    # print(predicted_response)
+    df['r_e_prediction'] = predicted_response
+    print("I am here now")
     ### create data per jet
     tempE = []
     tempEta = []
@@ -160,10 +187,11 @@ def main():
     temp_truthJetE = []
     temp_truthJetPt = []
     temp_clusterECalib = []
+    temp_clusterPt = []
     temp_cluster_ENG_CALIB_TOT = []
-    temp_eventNumber = []    
-    temp_clusterE_copy = []
-    
+    temp_r_e_prediction = []
+    temp_eventNumber = []
+
     clusterE = []
     clusterEta = []
     cluster_time = []
@@ -192,11 +220,11 @@ def main():
     truthJetE = []
     truthJetPt = []
     clusterECalib = []
+    clusterPt = []
     cluster_ENG_CALIB_TOT = []
+    r_e_prediction = []
     eventNumber = []
-    clusterE_sum = [] # variable used for NN trainnig
-    clusterE_sum_flat = [] 
-    
+
     count_jets = 0
     old_event = np.array(df['jetCnt'])[0]
     old_jetCnt = np.array(df['jetCnt'])[0]
@@ -241,7 +269,9 @@ def main():
                     temp_truthJetE = []
                     temp_truthJetPt = []
                     temp_clusterECalib = []
+                    temp_clusterPt = []
                     temp_cluster_ENG_CALIB_TOT = []
+                    temp_r_e_prediction = []
                     temp_eventNumber = []
                     continue
                 clusterE.append(tempE)
@@ -275,14 +305,11 @@ def main():
                 truthJetE.append(temp_truthJetE)
                 truthJetPt.append(temp_truthJetPt)
                 clusterECalib.append(temp_clusterECalib)
+                clusterPt.append(temp_clusterPt)
                 cluster_ENG_CALIB_TOT.append(temp_cluster_ENG_CALIB_TOT)
+                r_e_prediction.append(temp_r_e_prediction)
                 eventNumber.append(temp_eventNumber)
 
-                ## for NN trainning
-                tempE_sum = np.sum( np.array(temp_clusterE_copy) )
-                clusterE_sum_flat.append(tempE_sum)
-                #clusterE_sum.append(tempE_sum*np.ones(len(tempE)))
-                
                 tempE = []
                 tempEta = []
                 temp_time = []
@@ -310,10 +337,11 @@ def main():
                 temp_truthJetE = []
                 temp_truthJetPt = []
                 temp_clusterECalib = []
+                temp_clusterPt = []
                 temp_cluster_ENG_CALIB_TOT = []
-                temp_clusterE_copy = []
+                temp_r_e_prediction = []
                 temp_eventNumber = []
-                
+
                 count_jets = 0
 
         tempE.append(row['clusterE'])
@@ -344,15 +372,11 @@ def main():
         temp_truthJetE.append(row['truthJetE'])
         temp_truthJetPt.append(row['truthJetPt'])
         temp_clusterECalib.append(row['clusterECalib'])
+        temp_clusterPt.append(row['clusterPt'])
         temp_cluster_ENG_CALIB_TOT.append(row['cluster_ENG_CALIB_TOT'])
-        temp_clusterE_copy.append(row['clusterE_copy'])
-        temp_eventNumber.append(row['eventNumber'])    
+        temp_r_e_prediction.append(row['r_e_prediction'])
+        temp_eventNumber.append(row['eventNumber'])
     ## create Dictionary containing data and labels
-
-    x = clusterE_sum_flat
-    x, mean_E_sum, std_E_sum = normalize(x, dic_mean_and_std, "clusterE_sum")
-
-
     Dictionary_data ={
         "0": clusterE,
         "1": clusterEta,
@@ -381,15 +405,13 @@ def main():
         "truthJetE": truthJetE,
         "truthJetPt": truthJetPt,
         "clusterECalib": clusterECalib,
+        "clusterPt": clusterPt,
         "cluster_ENG_CALIB_TOT": cluster_ENG_CALIB_TOT,
-        #"clusterE_sum": clusterE_sum,
-        "eventNumber": eventNumber
+        "r_e_prediction": r_e_prediction,
+        "eventNumber": eventNumber,
+
     }
-    
-    with open('dict_mean_and_std.pkl', 'wb') as f:
-        pickle.dump(dic_mean_and_std, f)
-    print(dic_mean_and_std)
-    
+
     #print("jetRawE",jetRawE[i])
     # Delete the old DataFrame
     del df
@@ -402,9 +424,8 @@ def main():
     jet_count = 0
     for i in range(len(clusterE)):
         jet_count += 1
+        jetCnt = np.ones(len(clusterE[i]))*jet_count
         num_nodes = len(clusterE[i])
-        jetCnt = jet_count * np.ones(num_nodes)
-        clusterE_sum = ((clusterE_sum_flat[i] - mean_E_sum) / std_E_sum ) * np.ones(num_nodes)
         edge_index = torch.tensor([[k, j] for k in range(num_nodes) for j in range(k+1, num_nodes)], dtype=torch.long).t().contiguous()
         #print(edge_index)
         vec = []
@@ -446,10 +467,11 @@ def main():
                     TruthJetE=torch.tensor(truthJetE[i], dtype=torch.float),
                     TruthJetPt=torch.tensor(truthJetPt[i], dtype=torch.float),
                     ClusterECalib=torch.tensor(clusterECalib[i], dtype=torch.float),
+                    ClusterPt=torch.tensor(clusterPt[i], dtype=torch.float),
                     ClusterENGCALIBTOT=torch.tensor(cluster_ENG_CALIB_TOT[i], dtype=torch.float),
+                    REPredicted=torch.tensor(r_e_prediction[i], dtype=torch.float),
                     eventNumber=torch.tensor(eventNumber[i], dtype=torch.int),
-                    jetCnt=torch.tensor(jetCnt, dtype=torch.int),
-                    clusterE_sum=torch.tensor(clusterE_sum, dtype=torch.float)
+                    jetCnt=torch.tensor(jetCnt, dtype=torch.int)
                     )
 
         graph_list.append(graph)
@@ -457,26 +479,25 @@ def main():
             networkx_graph = to_networkx(graph)
             file_path = "graph.graphml"
             nx.write_graphml(networkx_graph, file_path)
-    
+
+
     ## save data
     output_path_graphs = "data/graphs_NewDataset"
 
     torch.save(graph_list, output_path_graphs + "_fulldata.pt")
     size_train = 0.80
+    # graphs_test = graph_list[int(len(graph_list)*size_train) : int(len(graph_list))]
+    # graph_train = graph_list[0 : int(len(graph_list)*size_train) ]
 
-    #graphs_test = graph_list[int(len(graph_list)*size_train) : int(len(graph_list))]
-    #graph_train = graph_list[0 : int(len(graph_list)*size_train) ]
-    
-    #train_size = int(0.8 * len(graph_list))
-    #valid_size = len(graph_list) - train_size
-    #generator1 = torch.Generator().manual_seed(42)
-    #graph_train, graphs_test = torch.utils.data.random_split(graph_list, [train_size, valid_size], generator=generator1)
+    # #torch.save(graph_train, output_path_graphs + "_train.pt")
+    # #torch.save(graphs_test, output_path_graphs + "_test.pt")
 
-    #graph_train, graphs_test = train_test_split(graph_list, test_size = size_train, random_state = 144)
     graphs_test, graph_train = train_test_split(graph_list, test_size = size_train, random_state = 144)
-    
     torch.save(graph_train, output_path_graphs + "_train.pt")
     torch.save(graphs_test, output_path_graphs + "_test.pt")
+    # torch.save(graph_list[0 : int(len(graph_list)*size_train) ], output_path_graphs + "_train.pt")
+    # torch.save(graph_list[int(len(graph_list)*size_train) : int(len(graph_list))], output_path_graphs + "_test.pt")
+
 
 
 # Main function call.

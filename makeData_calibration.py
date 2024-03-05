@@ -9,6 +9,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 import uproot as ur
+import uproot3 as ur3
 ########################
 ### MPL Settings ###
 
@@ -97,10 +98,13 @@ def main():
     ### params ###
 
     file_path = "all_info_df"
-    filename = ur.open('/home/jmsardain/JetCalib/PUMitigation/latest/MakeROOT/output.root')["ClusterTree"]
+    filename = ur.open('/home/jmsardain/JetCalib/PUMitigation/final/MakeROOT/output_calib.root')["ClusterTree"]
+    # filename = ur.open('/data/jmsardain/JetCalib/Akt4EMTopo.topo-cluster.root')
     df = filename.arrays(library="pd")
 
-    df = df[df["cluster_ENG_CALIB_TOT"]>0.]
+    df = df[ df['jetCnt']%5 == 0]
+
+    df = df[df["cluster_ENG_CALIB_TOT"]>0.3]
     df = df[df["clusterE"]>0.]
     df = df[df["cluster_CENTER_LAMBDA"]>0.]
     df = df[df["cluster_FIRST_ENG_DENS"]>0.]
@@ -113,15 +117,20 @@ def main():
 
     print(df.columns)
 
-    column_names = ['response', 'clusterECalib', 'cluster_ENG_CALIB_TOT', 'jetCnt',
-                    'clusterE', 'clusterEta', 'clusterPhi', 'cluster_CENTER_LAMBDA', 'cluster_CENTER_MAG',
-                    'cluster_ENG_FRAC_EM', 'cluster_FIRST_ENG_DENS', 'cluster_LATERAL', 'cluster_LONGITUDINAL',
-                    'cluster_PTD', 'cluster_time', 'cluster_ISOLATION', 'cluster_SECOND_TIME', 'cluster_SIGNIFICANCE',
-                    'nPrimVtx', 'avgMu',
+    column_names = ['response', 'clusterECalib', 'cluster_ENG_CALIB_TOT',
+                    'clusterE', 'clusterEta',
+                        'cluster_CENTER_LAMBDA', 'cluster_CENTER_MAG', 'cluster_ENG_FRAC_EM', 'cluster_FIRST_ENG_DENS',
+                        'cluster_LATERAL', 'cluster_LONGITUDINAL', 'cluster_PTD', 'cluster_time', 'cluster_ISOLATION',
+                        'cluster_SECOND_TIME', 'cluster_SIGNIFICANCE', 'nPrimVtx', 'avgMu',
+                    # 'clusterE', 'clusterEta', 'clusterPhi', 'cluster_CENTER_LAMBDA', 'cluster_CENTER_MAG',
+                    # 'cluster_ENG_FRAC_EM', 'cluster_FIRST_ENG_DENS', 'cluster_LATERAL', 'cluster_LONGITUDINAL',
+                    # 'cluster_PTD', 'cluster_time', 'cluster_ISOLATION', 'cluster_SECOND_TIME', 'cluster_SIGNIFICANCE',
+                    # 'nPrimVtx', 'avgMu',
                 ]
 
-    before = df
+
     df = df[column_names]
+    before = df
     print(df.columns)
 
     output_path_figures_before_preprocessing = "fig.pdf"
@@ -150,7 +159,7 @@ def main():
         df[field_name] = x
 
     # just normalizing
-    field_names = ["clusterEta", "clusterPhi", "cluster_CENTER_MAG", "nPrimVtx", "avgMu"]
+    field_names = ["clusterEta", "cluster_CENTER_MAG", "nPrimVtx", "avgMu"]
     for field_name in field_names:
         x = df[field_name]
         x, mean, std = normalize(x)
@@ -211,10 +220,10 @@ def main():
 
     test_before= brr[ntrain:ntrain+ntest]
 
-    np.save("data/all_info_df_train.npy", train)
-    np.save("data/all_info_df_test.npy", test)
-    np.save("data/all_info_df_val.npy", val)
-    np.save("data/all_info_df_test_before.npy", test_before)
+    np.save("data/calibration_train.npy", train)
+    np.save("data/calibration_test.npy", test)
+    np.save("data/calibration_val.npy", val)
+    np.save("data/calibration_test_before.npy", test_before)
 
 if __name__ == "__main__":
     main()
