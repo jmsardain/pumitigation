@@ -34,3 +34,5 @@ source compile.sh
 ```
 
 N.B.: the code using the TLorentzVector for now is giving the same values for jetPU and jetEM, either bug in the way HistoMaker.C is handling the values, or problem in the pumitigation code.
+
+The Plotting.ipynb notebook takes care of the final plotting
