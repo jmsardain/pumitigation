@@ -7,6 +7,7 @@ import pandas as pd
 import glob
 import os
 from models import *
+from torch_geometric.nn import aggr
 # alpha = 0.25
 # gamma = 0.5
 def get_latest_file(directory, DNNorRetrain=''):
@@ -39,16 +40,33 @@ def getPredictedResponse(num_features, device, dir_path, test_loader):
 def train(loader, model, device, optimizer):
     model.train()
     loss_all = 0
+    sum1 = aggr.SumAggregation()
+    loss_MSE = torch.nn.MSELoss()
+
     for data in loader:
         data = data.to(device)
         optimizer.zero_grad()
         out = model(data.x, data.edge_index)
 
+
         labels = torch.tensor(data.y, dtype=torch.float).to(device)
+        jetCnt = data.jetCnt
+        jetCnt = torch.tensor(jetCnt, dtype=torch.int64)
+        clusterE     = data.x[:,0]
+        clusterE    = torch.reshape(clusterE, (int(list(clusterE.shape)[0]),1))
+        clusterEDNN  = data.x[:,0] / data.REPredicted
+        clusterEDNN = torch.reshape(clusterEDNN, (int(list(clusterEDNN.shape)[0]),1))
+
+        Ejet_target  = sum1(clusterE[labels < 0.1], jetCnt[labels < 0.1] )
+        Ejet_train   = sum1(clusterEDNN*out, jetCnt)
+
+        ## reshape now
         labels = torch.reshape(labels, (int(list(labels.shape)[0]),1))
+        jetCnt = torch.reshape(jetCnt, (int(list(jetCnt.shape)[0]),1))
         ww = torch.tensor(data.weights, dtype=torch.float).to(device)
         ww = torch.reshape(ww, (int(list(labels.shape)[0]),1))
 
+        loss_reg = loss_MSE(Ejet_train, Ejet_target)
         # Compute focal loss
         # ce_loss = torch.nn.functional.binary_cross_entropy_with_logits(out, labels, reduction='none')
         # ce_loss = torch.nn.functional.binary_cross_entropy(out, labels)
@@ -62,8 +80,9 @@ def train(loader, model, device, optimizer):
         # loss = (alpha * (1 - pt) ** gamma * ce_loss).mean() ## focal loss
 
         # loss = F.binary_cross_entropy(output, new_y, weight = new_w)
-        loss = torch.nn.functional.binary_cross_entropy(out, labels, weight = ww)
+        loss_clf = torch.nn.functional.binary_cross_entropy(out, labels, weight = ww)
         # loss = torch.nn.functional.binary_cross_entropy(out, labels)
+        loss = loss_clf + loss_reg
         loss.backward()
         optimizer.step()
         loss_all += loss.item()
