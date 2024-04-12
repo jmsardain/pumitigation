@@ -241,8 +241,12 @@ def main():
         diff_clusterPhi = torch.abs(x[edge_index[0], 2] - x[edge_index[1], 2])
 
         edge_features = torch.stack([diff_clusterE, diff_clusterEta, diff_clusterPhi], dim=1)
-
-        data = Data(x=x, edge_index=edge_index, y=torch.tensor(labels_list, dtype=torch.float))
+        w = np.array(labels_list)
+        counts_ones = np.sum(w == 1) ## number of signal clusters
+        counts_zeros = np.sum(w == 0) ## number of pu clusters
+        w = np.where(w == 0, 0.001, w)
+        
+        data = Data(x=x, edge_index=edge_index, y=torch.tensor(labels_list, dtype=torch.float), weights=torch.tensor(w, dtype=torch.float))
         data.eventNumber = torch.tensor(labels_list, dtype=torch.float)
         data.jetCnt = jetCnt
         data.jetCalE = jetCalE_list
