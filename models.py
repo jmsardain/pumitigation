@@ -297,6 +297,64 @@ class GATNet_2(nn.Module):
 
         return x
 
+
+class GATNet_JMS(nn.Module):
+    def __init__(self, in_channels, weight_decay):
+        super(GATNet_JMS, self).__init__()
+
+        self.conv1 = GATConv(in_channels, 32, heads=8, dropout=0.1)
+        self.conv2 = GATConv(32*8, 32, heads=8, dropout=0.1)
+        self.conv3 = GATConv(32*8, 64, heads=12, dropout=0.1)
+
+        self.Linear_node1 = torch.nn.Linear(in_channels,32)
+        self.Linear_node2 = torch.nn.Linear(32,32)
+
+        self.Linear_node_After1 = torch.nn.Linear(32*8,80)
+        #self.Linear_node_After2 = torch.nn.Linear(64,64)
+
+        self.Linear_node_After3 = torch.nn.Linear(32*8,200)
+        #self.Linear_node_After4 = torch.nn.Linear(128,64)
+
+        self.Linear_final1 = torch.nn.Linear(64*12+200 + 80 + 32,200)
+        self.Linear_final2 = torch.nn.Linear(200,64)
+        self.Linear_final3 = torch.nn.Linear(64,1)
+
+        self.weight_decay = weight_decay
+    def forward(self, x, edge_index):
+        gg1 = self.Linear_node1(x)
+        gg1 = torch.relu(gg1)
+
+        gg2 = self.Linear_node2(gg1)
+        gg2 = torch.relu(gg2)
+
+        x1 = self.conv1(x, edge_index)
+        x1 = torch.relu(x1)
+        x2 = self.conv2(x1, edge_index)
+        x2 = torch.relu(x2)
+        x3 = self.conv3(x2, edge_index)
+        x3 = torch.relu(x3)
+
+        x_after1 = self.Linear_node_After1(x1)
+        x_after1 = torch.relu(x_after1)
+        x_after2 = self.Linear_node_After3(x2)
+        x_after2 = torch.relu(x_after2)
+
+        xfinal = torch.cat(( gg2, x3, x_after1, x_after2), dim=1)
+        xfinal = self.Linear_final1(xfinal)
+        xfinal = torch.relu(xfinal)
+        xfinal = self.Linear_final2(xfinal)
+        xfinal = torch.relu(xfinal)
+        xfinal = self.Linear_final3(xfinal)
+
+        l2_reg = torch.tensor(0.0, device=x.device)
+        for param in self.parameters():
+            l2_reg += torch.norm(param)
+
+        x = torch.sigmoid(xfinal)
+
+        return x, self.weight_decay * l2_reg
+
+
 ######### --------------
 class PNAConv_OnlyNodes(nn.Module):
     def __init__(self, in_channels):
@@ -528,3 +586,29 @@ class EdgeGinNet(torch.nn.Module):
         x = self.lin(x)
         #print(x.shape)
         return F.sigmoid(x)
+
+
+class GATNet_simple(nn.Module):
+    def __init__(self, in_channels):
+        super(GATNet_simple, self).__init__()
+
+        self.conv1 = GATConv(in_channels, 32, heads=8, dropout=0.1)
+        self.conv2 = GATConv(32 * 8, 32, heads=8, dropout=0.1)
+        self.conv3 = GATConv(32 * 8, 64, heads=12, dropout=0.1)
+
+        self.linear_final = nn.Linear(32*8 + 32*8 + 64*12, 1)
+
+    def forward(self, x, edge_index):
+
+        x1 = self.conv1(x, edge_index)
+        x1 = torch.relu(x1)
+        x2 = self.conv2(x1, edge_index)
+        x2 = torch.relu(x2)
+        x3 = self.conv3(x2, edge_index)
+        x3 = torch.relu(x3)
+
+        x_concat = torch.cat([x1, x2, x3], dim=1)
+
+        x_final = self.linear_final(x_concat)
+
+        return torch.sigmoid(x_final)

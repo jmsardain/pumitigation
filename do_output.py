@@ -40,7 +40,8 @@ def main():
     ## load graphs
     path_to_test = config['data']['path_to_test']
     #graph_list_test  = torch.load('data/graphs_test.pt')
-    graph_list_test  = torch.load('data/graphs_NewDataset_test.pt')
+    #graph_list_test  = torch.load('data/graphs_NewDataset_test.pt')
+    graph_list_test = torch.load(path_to_test)
 
     #### in case you used some node features ####
     Use_some_Edge_attributes = False
@@ -56,7 +57,8 @@ def main():
     choose_model = config['architecture']['choose_model']
     ## load model
     if choose_model == "GATNet":
-        model = GATNet_2(21)
+        # model = GATNet_2(22)
+        model = GATNet_simple(22)
     if choose_model == "EdgeConv":
         model = EdgeGinNet(21)
 
@@ -95,7 +97,7 @@ def main():
     Cluster_E = torch.tensor([])
     Cluster_Eta = torch.tensor([])
     Cluster_Phi = torch.tensor([])
-    
+
     jetCnt = torch.tensor([])
     eventNumber = torch.tensor([])
 
@@ -107,9 +109,11 @@ def main():
     truthJetE = torch.tensor([])
     truthJetPt = torch.tensor([])
     clusterECalib = torch.tensor([])
-    ClusterPt = torch.tensor([])
+    clusterPt = torch.tensor([])
     ClusterENGCALIBTOT = torch.tensor([])
     r_e_predicted = torch.tensor([])
+    jetAreaE = torch.tensor([])
+    jetAreaPt = torch.tensor([])
 
 
     # clusterE  jetRawE jetCnt score
@@ -154,7 +158,10 @@ def main():
 
             jet_count += len(data)
             print(jet_count)
-            #jetCnt_temp = torch.ones(len(data))*jet_count
+
+            # print(data.y)
+            # print(data.jetCnt)
+            jetCnt_temp = torch.ones(len(data))*jet_count
             jetCnt_temp = torch.tensor(data.jetCnt , dtype=torch.int).cpu()#to(device)
             jetCnt_temp = torch.reshape(jetCnt_temp, (int(list(jetCnt_temp.shape)[0]),1))
             jetCnt = torch.cat((jetCnt.clone().detach(), jetCnt_temp.clone().detach().cpu()), 0)
@@ -198,20 +205,27 @@ def main():
             ## clusterPt
             clusterPt_temp = torch.tensor(data.ClusterPt , dtype=torch.float).cpu()#to(device)
             clusterPt_temp = torch.reshape(clusterPt_temp, (int(list(clusterPt_temp.shape)[0]),1))
-            ClusterPt = torch.cat((ClusterPt.clone().detach(), clusterPt_temp.clone().detach().cpu()), 0)
-            
+            clusterPt = torch.cat((clusterPt.clone().detach(), clusterPt_temp.clone().detach().cpu()), 0)
+
             ## 'jetCalE'
             jetCalE_temp = torch.tensor(data.JetCalE , dtype=torch.float).cpu()#to(device)
             jetCalE_temp = torch.reshape(jetCalE_temp, (int(list(jetCalE_temp.shape)[0]),1))
             jetCalE = torch.cat((jetCalE.clone().detach(), jetCalE_temp.clone().detach().cpu()), 0)
 
-            
-
-
             ## predicted response
             r_e_predicted_temp = torch.tensor(data.REPredicted , dtype=torch.float).cpu()#to(device)
             r_e_predicted_temp = torch.reshape(r_e_predicted_temp, (int(list(r_e_predicted_temp.shape)[0]),1))
             r_e_predicted = torch.cat((r_e_predicted.clone().detach(), r_e_predicted_temp.clone().detach().cpu()), 0)
+
+            ## jetAreaE
+            jetAreaE_temp = torch.tensor(data.JetAreaE , dtype=torch.float).cpu()#to(device)
+            jetAreaE_temp = torch.reshape(jetAreaE_temp, (int(list(jetAreaE_temp.shape)[0]),1))
+            jetAreaE = torch.cat((jetAreaE.clone().detach(), jetAreaE_temp.clone().detach().cpu()), 0)
+
+            ## jetAreaPt
+            jetAreaPt_temp = torch.tensor(data.JetAreaPt , dtype=torch.float).cpu()#to(device)
+            jetAreaPt_temp = torch.reshape(jetAreaPt_temp, (int(list(jetAreaPt_temp.shape)[0]),1))
+            jetAreaPt = torch.cat((jetAreaPt.clone().detach(), jetAreaPt_temp.clone().detach().cpu()), 0)
 
 
             # print("jetRawE:",len(jetRawE) ," jetCnt:",len(jetCnt)," nodes_out:",len(nodes_out)  )
@@ -227,9 +241,11 @@ def main():
     jetCalE = torch.squeeze(jetCalE)
     r_e_predicted = torch.squeeze(r_e_predicted)
     Cluster_E = torch.squeeze(Cluster_E)
-    ClusterPt = torch.squeeze(ClusterPt)
+    clusterPt = torch.squeeze(clusterPt)
     clusterECalib = torch.squeeze(clusterECalib)
     ClusterENGCALIBTOT = torch.squeeze(ClusterENGCALIBTOT)
+    jetAreaE = torch.squeeze(jetAreaE)
+    jetAreaPt = torch.squeeze(jetAreaPt)
 
     labels_test = torch.squeeze(labels_test)
     nodes_out = torch.squeeze(nodes_out)
@@ -245,9 +261,11 @@ def main():
     Cluster_E = Cluster_E.detach().cpu().numpy()
     Cluster_Eta = Cluster_Eta.detach().cpu().numpy()
     Cluster_Phi = Cluster_Phi.detach().cpu().numpy()
-    Cluster_Pt = ClusterPt.detach().cpu().numpy()
+    clusterPt = clusterPt.detach().cpu().numpy()
     clusterECalib = clusterECalib.detach().cpu().numpy()
     ClusterENGCALIBTOT = ClusterENGCALIBTOT.detach().cpu().numpy()
+    jetAreaE = jetAreaE.detach().cpu().numpy()
+    jetAreaPt = jetAreaPt.detach().cpu().numpy()
 
     labels_test = labels_test.detach().cpu().numpy()
     nodes_out = nodes_out.detach().cpu().numpy()
@@ -263,11 +281,13 @@ def main():
     df_out['truthJetE'] = truthJetE
     df_out['truthJetPt'] = truthJetPt
     df_out['jetCalE'] = jetCalE
+    df_out['jetAreaE'] = jetAreaE
+    df_out['jetAreaPt'] = jetAreaPt
     ## cluster info
     df_out['clusterE'] = Cluster_E
     df_out['clusterEta'] = Cluster_Eta
     df_out['clusterPhi'] = Cluster_Phi
-    df_out['clusterPt'] = ClusterPt
+    df_out['clusterPt'] = clusterPt
     df_out['clusterECalib'] = clusterECalib
     df_out['cluster_ENG_CALIB_TOT'] = ClusterENGCALIBTOT
     df_out['r_e_predicted'] = r_e_predicted
@@ -301,22 +321,11 @@ def main():
     df_out['Scores'] = 1 - df_out['score']
     df_out['clusterEDNN'] = df_out['clusterE']  / r_e_predicted
 
+    print(df_out.columns)
 
-
-    # grouped_df = df_out.groupby('jetCnt').agg(list).reset_index()
-
-    # for i in grouped_df.columns:
-    #     grouped_df[i] = grouped_df[i].apply(lambda x: np.array(x).flatten())
-
-    # output_file = 'output_file.root'
-    # # uproot.to_root(output_file, grouped_df, key='GNN')
-    # with uproot.recreate(output_file) as f:
-    #     f["GNN"] = grouped_df.to_dict(orient="list")
-
-    # df.to_csv(index=False)
     path_to_save = config['data']['path_to_save']
     model_name  = config['data']['model_name']
-    # df_out.to_csv(path_to_save+'/ouput_dataframes/out_'+model_name+'.csv')
+    df_out.to_csv(path_to_save+'/out_'+model_name+'.csv')
 
     root_file_name = path_to_save+'/out_'+model_name+'.root'
     tree_name = 'aTree'
@@ -324,8 +333,6 @@ def main():
     with uproot3.recreate(root_file_name) as root_file:
         root_file[tree_name] = uproot3.newtree({key: df_out[key].dtype for key in df_out.columns})
         root_file[tree_name].extend(df_out.to_dict(orient='list'))
-
-    # print(df_out)
 
     return
 

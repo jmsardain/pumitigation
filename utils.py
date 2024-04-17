@@ -8,6 +8,7 @@ import glob
 import os
 from models import *
 from torch_geometric.nn import aggr
+import pickle
 # alpha = 0.25
 # gamma = 0.5
 def get_latest_file(directory, DNNorRetrain=''):
@@ -36,60 +37,70 @@ def getPredictedResponse(num_features, device, dir_path, test_loader):
     out = np.concatenate(predictions, axis=0)
     return out
 
+def revertValue(x, mean, sigma):
+    return torch.exp(sigma*x + mean)
 
-def train(loader, model, device, optimizer):
+with open('dict_mean_and_std.pkl', 'rb') as f:
+    loaded_dict = pickle.load(f)
+
+
+def loss_for_jetE(y_pred, y_true):
+    # y_pred = torch.squeeze(y_pred)
+    # y_true = torch.squeeze(y_true)
+    y_true = torch.clamp(y_true, min=1e-6)  # Clamping to avoid division by zero
+    y_pred = torch.clamp(y_pred, min=1e-6)  # Clamping to avoid division by zero
+    ratio = torch.clamp(torch.log(y_pred / y_true), min=1e-6)
+    loss = ratio
+    return loss.mean()
+
+def train_new(loader, model, device, optimizer):
     model.train()
     loss_all = 0
-    sum1 = aggr.SumAggregation()
     loss_MSE = torch.nn.MSELoss()
+    for idx, data in enumerate(loader):
+        # if idx > 0: break
+        data = data.to(device)
+        optimizer.zero_grad()
+        out = model(data.x, data.edge_index)
+        labels = torch.tensor(data.y, dtype=torch.float).to(device)
+        labels = torch.reshape(labels, (int(list(labels.shape)[0]),1))
+        ww = torch.tensor(data.weights, dtype=torch.float).to(device)
+        ww = torch.reshape(ww, (int(list(labels.shape)[0]),1))
 
+        loss = torch.nn.functional.binary_cross_entropy(out, labels, weight = ww)
+        loss.backward()
+        optimizer.step()
+        loss_all += loss.item()
+    return loss_all
+
+def train_original(loader, model, device, optimizer):
+    model.train()
+    loss_all = 0
     for data in loader:
         data = data.to(device)
         optimizer.zero_grad()
         out = model(data.x, data.edge_index)
 
-
         labels = torch.tensor(data.y, dtype=torch.float).to(device)
-        jetCnt = data.jetCnt
-        jetCnt = torch.tensor(jetCnt, dtype=torch.int64)
-        clusterE     = data.x[:,0]
-        clusterE    = torch.reshape(clusterE, (int(list(clusterE.shape)[0]),1))
-        clusterEDNN  = data.x[:,0] / data.REPredicted
-        clusterEDNN = torch.reshape(clusterEDNN, (int(list(clusterEDNN.shape)[0]),1))
-
-        Ejet_target  = sum1(clusterE[labels < 0.1], jetCnt[labels < 0.1] )
-        Ejet_train   = sum1(clusterEDNN*out, jetCnt)
-
-        ## reshape now
         labels = torch.reshape(labels, (int(list(labels.shape)[0]),1))
-        jetCnt = torch.reshape(jetCnt, (int(list(jetCnt.shape)[0]),1))
         ww = torch.tensor(data.weights, dtype=torch.float).to(device)
         ww = torch.reshape(ww, (int(list(labels.shape)[0]),1))
 
-        loss_reg = loss_MSE(Ejet_train, Ejet_target)
-        # Compute focal loss
-        # ce_loss = torch.nn.functional.binary_cross_entropy_with_logits(out, labels, reduction='none')
-        # ce_loss = torch.nn.functional.binary_cross_entropy(out, labels)
-        # p_t = torch.exp(-ce_loss)
-        # alpha = 0.25
-        # gamma = 0.5
-        # loss = (1 - p_t) ** gamma
-        # loss = - alpha * loss
-        # loss = torch.mean(loss * ce_loss)
-
-        # loss = (alpha * (1 - pt) ** gamma * ce_loss).mean() ## focal loss
 
         # loss = F.binary_cross_entropy(output, new_y, weight = new_w)
-        loss_clf = torch.nn.functional.binary_cross_entropy(out, labels, weight = ww)
-        # loss = torch.nn.functional.binary_cross_entropy(out, labels)
-        loss = loss_clf + loss_reg
+        # loss = torch.nn.functional.binary_cross_entropy(out, labels, weight = ww)
+        loss = torch.nn.BCELoss(weight=ww)(out, labels)
+        # loss = torch.nn.NLLLoss(weight = torch.tensor([0.00001, 1.0])(out, labels))
+
+        # loss = loss + l2reg
+        loss = loss
         loss.backward()
         optimizer.step()
         loss_all += loss.item()
     return loss_all
 
 
-def validate(loader, model, device, optimizer):
+def validate_original(loader, model, device ):
     model.eval()
     loss_all = 0
     for data in loader:
@@ -102,19 +113,256 @@ def validate(loader, model, device, optimizer):
         ww = torch.tensor(data.weights, dtype=torch.float).to(device)
         ww = torch.reshape(ww, (int(list(labels.shape)[0]),1))
 
-        loss = torch.nn.functional.binary_cross_entropy(out, labels, weight = ww)
-        # loss = torch.nn.functional.binary_cross_entropy(out, labels)
+        # loss = torch.nn.functional.binary_cross_entropy(out, labels, weight = ww)
+        loss = torch.nn.BCELoss(weight=ww)(out, labels)
+        # loss = torch.nn.NLLLoss(weight = torch.tensor([0.00001, 1.0])(out, labels))
 
-        # ce_loss = torch.nn.functional.binary_cross_entropy(out, labels)
-        # p_t = torch.exp(-ce_loss)
-        # alpha = 0.25
-        # gamma = 0.5
-        # loss = (1 - p_t) ** gamma
-        # loss = - alpha * loss
-        # loss = torch.mean(loss * ce_loss)
-
+        # loss = loss + l2reg
+        loss = loss
         loss_all += loss.item()
     return loss_all
+
+
+def validate_new(loader, model, device):
+    model.eval()
+    loss_all = 0
+    loss_MSE = torch.nn.MSELoss()
+    for idx, data in enumerate(loader):
+        # if idx > 0: break
+        data = data.to(device)
+        out = model(data.x, data.edge_index)
+        labels = torch.tensor(data.y, dtype=torch.float).to(device)
+        ## reshape now
+        out = out.view(-1, out.shape[-1])
+        labels = torch.reshape(labels, (int(list(labels.shape)[0]),1))
+        ww = torch.tensor(data.weights, dtype=torch.float).to(device)
+        ww = torch.reshape(ww, (int(list(labels.shape)[0]),1))
+        loss = torch.nn.functional.binary_cross_entropy(out, labels, weight = ww)
+        loss_all += loss.item()
+    return loss_all
+
+
+
+
+def train(loader, model, device, optimizer):
+    model.train()
+    loss_all = 0
+    clf, reg = 0, 0
+    for idx, data in enumerate(loader):
+        # if idx > 0: break
+        data = data.to(device)
+        optimizer.zero_grad()
+        out = model(data.x, data.edge_index)
+        clusterEDNN = data.ClusterEDNN
+        labels = torch.tensor(data.y, dtype=torch.float).to(device)
+        Ejet_target = []
+        Ejet_train  = []
+        ## regression part
+        for i in range(len(data)):
+            # if i > 0: break;
+            current_out = out[data.ptr[i]:data.ptr[i + 1]]
+            current_clusterEDNN = clusterEDNN[data.ptr[i]:data.ptr[i + 1]]
+            mask = labels[data.ptr[i]:data.ptr[i + 1]] < 0.1
+            Ejet_target.append(torch.sum(current_clusterEDNN[mask]))
+            Ejet_train.append(torch.sum(current_clusterEDNN * (1 - current_out.view(-1))))
+
+        Ejet_train  = torch.stack(Ejet_train)
+        Ejet_target = torch.stack(Ejet_target)
+        # print(Ejet_target)
+        # reshape now
+        labels = torch.reshape(labels, (int(list(labels.shape)[0]),1))
+        ww = torch.tensor(data.weights, dtype=torch.float).to(device)
+        ww = torch.reshape(ww, (int(list(labels.shape)[0]),1))
+        #
+        loss_reg = loss_for_jetE(Ejet_train, Ejet_target)
+        # loss_clf = torch.nn.functional.binary_cross_entropy(out, labels, weight = ww)
+        loss_clf = torch.nn.BCELoss(weight=ww)(out, labels)
+        loss = loss_clf - 0.1 * loss_reg
+        loss.backward()
+        optimizer.step()
+        loss_all += loss.item()
+    # print("loss_clf: {}     loss_reg: {}".format(clf, reg))
+    return loss_all
+
+def validate(loader, model, device):
+    model.eval()
+    loss_all = 0
+    loss_MSE = torch.nn.MSELoss()
+    for idx, data in enumerate(loader):
+        # if idx > 0: break
+        data = data.to(device)
+        out = model(data.x, data.edge_index)
+        clusterEDNN = data.ClusterEDNN
+        labels = torch.tensor(data.y, dtype=torch.float).to(device)
+        Ejet_target = []
+        Ejet_train  = []
+        ## regression part
+        for i in range(len(data)):
+            current_out = out[data.ptr[i]:data.ptr[i + 1]]
+            current_clusterEDNN = clusterEDNN[data.ptr[i]:data.ptr[i + 1]]
+            mask = labels[data.ptr[i]:data.ptr[i + 1]] < 0.1
+            Ejet_target.append(torch.sum(current_clusterEDNN[mask]))
+            Ejet_train.append(torch.sum(current_clusterEDNN * (1 - current_out.view(-1))))
+
+        Ejet_train = torch.stack(Ejet_train)
+        Ejet_target =torch.stack(Ejet_target)
+
+        ## reshape now
+        out = out.view(-1, out.shape[-1])
+        labels = torch.reshape(labels, (int(list(labels.shape)[0]),1))
+        ww = torch.tensor(data.weights, dtype=torch.float).to(device)
+        ww = torch.reshape(ww, (int(list(labels.shape)[0]),1))
+
+        loss_reg = loss_for_jetE(Ejet_train, Ejet_target)
+        # loss = F.binary_cross_entropy(output, new_y, weight = new_w)
+        # loss_clf = torch.nn.functional.binary_cross_entropy(out, labels, weight = ww)
+        loss_clf = torch.nn.BCELoss(weight=ww)(out, labels)
+        # loss = torch.nn.functional.binary_cross_entropy(out, labels)
+        loss = loss_clf - 0.1* loss_reg
+        # loss = loss_clf + l2reg
+        loss_all += loss.item()
+    return loss_all
+
+
+# def train_old(loader, model, device, optimizer):
+#     model.train()
+#     loss_all = 0
+#     from torch_geometric.nn import aggr
+#     sum1 = aggr.SumAggregation()
+#     loss_MSE = torch.nn.MSELoss()
+#
+#     for idx, data in enumerate(loader):
+#         if idx > 0: break
+#         data = data.to(device)
+#         optimizer.zero_grad()
+#         out = model(data.x, data.edge_index)
+#         print(len(data))
+#
+#         labels = torch.tensor(data.y, dtype=torch.float).to(device)
+#         jetCnt = data.jetCnt
+#         jetCnt = torch.tensor(jetCnt, dtype=torch.int64)
+#         clusterE = data.x[:,0]
+#         clusterE = revertValue(clusterE, loaded_dict["clusterE"][0], loaded_dict["clusterE"][1]).to(device)
+#         clusterEDNN  = clusterE / data.REPredicted
+#         clusterEDNN = torch.reshape(clusterEDNN, (int(list(clusterEDNN.shape)[0]),1))
+#
+#         Ejet_target  = sum1(clusterEDNN[labels < 0.1], jetCnt[labels < 0.1] )
+#         Ejet_train   = sum1(clusterEDNN*(1-out), jetCnt)
+#
+#         ## reshape now
+#         labels = torch.reshape(labels, (int(list(labels.shape)[0]),1))
+#         jetCnt = torch.reshape(jetCnt, (int(list(jetCnt.shape)[0]),1))
+#         ww = torch.tensor(data.weights, dtype=torch.float).to(device)
+#         ww = torch.reshape(ww, (int(list(labels.shape)[0]),1))
+#
+#         loss_reg = loss_MSE(Ejet_train, Ejet_target)
+#         # loss = F.binary_cross_entropy(output, new_y, weight = new_w)
+#         loss_clf = torch.nn.functional.binary_cross_entropy(out, labels, weight = ww)
+#         # loss = torch.nn.functional.binary_cross_entropy(out, labels)
+#         loss = loss_clf + loss_reg
+#         loss.backward()
+#         optimizer.step()
+#         loss_all += loss.item()
+#     return loss_all
+#
+#
+
+# def train(loader, model, device, optimizer):
+#     model.train()
+#     loss_all = 0
+#     sum1 = aggr.SumAggregation()
+#     loss_MSE = torch.nn.MSELoss()
+#
+#     with open('dict_mean_and_std.pkl', 'rb') as f:
+#         loaded_dict = pickle.load(f)
+#     for data in loader:
+#         data = data.to(device)
+#         optimizer.zero_grad()
+#         out = model(data.x, data.edge_index)
+#         labels = torch.tensor(data.y, dtype=torch.float).to(device)
+#         labels = torch.reshape(labels, (int(list(labels.shape)[0]),1))
+#
+#         # jetCnt = data.jetCnt
+#         # jetCnt = torch.tensor(jetCnt, dtype=torch.int64)
+#         # jetCnt = torch.reshape(jetCnt, (int(list(jetCnt.shape)[0]),1))
+#
+#
+#         ## get Ejet train
+#         clusterE = data.x[:,0]
+#         clusterE = revertValue(clusterE, loaded_dict["clusterE"][0], loaded_dict["clusterE"][1]).to(device)
+#         clusterE = clusterE*out
+#         Ejet_train = torch.tensor([clusterE[graph['nodes']].sum() for graph in data])
+#
+#
+#         ## get Ejet target
+#         clusterE_target = clusterE[labels_tensor < 0.1]
+#         clusterE_target = revertValue(clusterE_target, loaded_dict["clusterE"][0], loaded_dict["clusterE"][1]).to(device)
+#         Ejet_target = torch.tensor([clusterE_target[graph['nodes']].sum() for graph in data])
+#
+#
+#
+#
+#         ## reshape now
+#         ww = torch.tensor(data.weights, dtype=torch.float).to(device)
+#         ww = torch.reshape(ww, (int(list(labels.shape)[0]),1))
+#
+#         ## define losses
+#         loss_reg = loss_MSE(Ejet_train, Ejet_target)
+#         loss_clf = torch.nn.functional.binary_cross_entropy(out, labels, weight = ww)
+#         loss = loss_clf + loss_reg
+#         loss.backward()
+#         optimizer.step()
+#         loss_all += loss.item()
+#     return loss_all
+
+
+# def validate_old(loader, model, device, optimizer):
+#     model.eval()
+#     loss_all = 0
+#     sum1 = aggr.SumAggregation()
+#     loss_MSE = torch.nn.MSELoss()
+#     for data in loader:
+#         data = data.to(device)
+#         out = model(data.x, data.edge_index)
+#
+#         labels = torch.tensor(data.y, dtype=torch.float).to(device)
+#         jetCnt = data.jetCnt
+#         jetCnt = torch.tensor(jetCnt, dtype=torch.int64)
+#
+#         clusterE = data.x[:,0]
+#         clusterE = revertValue(clusterE, loaded_dict["clusterE"][0], loaded_dict["clusterE"][1]).to(device)
+#         clusterEDNN  = clusterE / data.REPredicted
+#
+#         clusterEDNN = torch.reshape(clusterEDNN, (int(list(clusterEDNN.shape)[0]),1))
+#
+#         Ejet_target  = sum1(clusterEDNN[labels < 0.1], jetCnt[labels < 0.1] )
+#         Ejet_train   = sum1(clusterEDNN*(1-out), jetCnt)
+#         # print(Ejet_train)
+#         # print(Ejet_target)
+#
+#         # print(Ejet_train.shape)
+#         # print(Ejet_target.shape)
+#         out = out.view(-1, out.shape[-1])
+#         labels = torch.reshape(labels, (int(list(labels.shape)[0]),1))
+#         ww = torch.tensor(data.weights, dtype=torch.float).to(device)
+#         ww = torch.reshape(ww, (int(list(labels.shape)[0]),1))
+#
+#         loss_clf = torch.nn.functional.binary_cross_entropy(out, labels, weight = ww)
+#         loss_reg = loss_MSE(Ejet_train, Ejet_target)
+#         loss = loss_clf + loss_reg
+#         # loss = torch.nn.functional.binary_cross_entropy(out, labels)
+#
+#         # ce_loss = torch.nn.functional.binary_cross_entropy(out, labels)
+#         # p_t = torch.exp(-ce_loss)
+#         # alpha = 0.25
+#         # gamma = 0.5
+#         # loss = (1 - p_t) ** gamma
+#         # loss = - alpha * loss
+#         # loss = torch.mean(loss * ce_loss)
+#
+#         loss_all += loss.item()
+#     return loss_all
+
 
 def plot_ROC_curve(loader, model, device, edges_or_nodes, outdir=''):
     model.eval()

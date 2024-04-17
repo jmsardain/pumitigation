@@ -54,7 +54,8 @@ def main():
 
     # ### New dataset 60 millions
     # filename = uproot.open('/data/jmsardain/JetCalib/Akt4EMTopo.topo-cluster.root')["ClusterTree"]
-    filename = uproot.open('/home/jmsardain/JetCalib/PUMitigation/final/MakeROOT/output_pu.root')["ClusterTree"]
+    # filename = uproot.open('/home/jmsardain/JetCalib/PUMitigation/final/MakeROOT/output_pu.root')["ClusterTree"]
+    filename = uproot.open('/home/jmsardain/JetCalib/PUMitigation/final/Resample/output_pu.root')["ClusterTree"]
     df = filename.arrays(library="pd")
     # print(len(df))
     # df = df.head(5000000)
@@ -70,7 +71,7 @@ def main():
                 'nPrimVtx', 'avgMu',  'response', ## up until here use these for testing of calibration and add predicted response to graphs!
                 'jetCnt', 'clusterPhi', "zL", "zT", "zRel", 'diffEta', 'cluster_nCells',## up to here, we need these features for training
                 'eventNumber', 'clusterPt', 'jetCalE', 'jetRawE', 'jetRawPt', 'truthJetE', 'truthJetPt', 'clusterECalib', 'cluster_ENG_CALIB_TOT',  ## add these features to do comprehensive plots at the end
-                'labels', ## these are labels, 1 = PU, 0 = signal
+                'jetAreaE', 'jetAreaPt', 'labels', ## these are labels, 1 = PU, 0 = signal
                 ]
 
     jetCntValues = np.unique(df.jetCnt.values)
@@ -193,6 +194,9 @@ def main():
         r_e_prediction_list = []
         clusterEDNN_list = []
         eventNumber_list = []
+        jetCnt_list = []
+        jetAreaE_list = []
+        jetAreaPt_list = []
 
         for index, row in group_df.iterrows():
             clusterE_list.append(row['clusterE'])
@@ -228,6 +232,9 @@ def main():
             r_e_prediction_list.append(row['r_e_prediction'])
             clusterEDNN_list.append(row['clusterEDNN'])
             eventNumber_list.append(row['eventNumber'])
+            jetCnt_list.append(row['jetCnt'])
+            jetAreaE_list.append(row['jetAreaE'])
+            jetAreaPt_list.append(row['jetAreaPt'])
 
         x = torch.tensor([clusterE_list, clusterEta_list, cluster_time_list,
                           cluster_CENTER_LAMBDA_list, cluster_CENTER_MAG_list, cluster_ENG_FRAC_EM_list,
@@ -244,20 +251,33 @@ def main():
         w = np.array(labels_list)
         counts_ones = np.sum(w == 1) ## number of signal clusters
         counts_zeros = np.sum(w == 0) ## number of pu clusters
-        w = np.where(w == 0, 0.001, w)
-        
-        data = Data(x=x, edge_index=edge_index, y=torch.tensor(labels_list, dtype=torch.float), weights=torch.tensor(w, dtype=torch.float))
-        data.eventNumber = torch.tensor(labels_list, dtype=torch.float)
-        data.jetCnt = jetCnt
-        data.jetCalE = jetCalE_list
-        data.jetRawPt = jetRawPt_list
-        data.truthJetE = truthJetE_list
-        data.truthJetPt = truthJetPt_list
-        data.clusterECalib = clusterECalib_list
-        data.clusterPt = clusterPt_list
-        data.cluster_ENG_CALIB_TOT = cluster_ENG_CALIB_TOT_list
-        data.r_e_prediction = r_e_prediction_list
-        data.clusterEDNN = clusterEDNN_list
+
+        # NewWeight = 0
+        if counts_zeros>0 and counts_ones>0:
+            NewWeight = counts_ones/ counts_zeros
+        else:
+            NewWeight = 1.0
+        w = np.where(w == 0 , NewWeight, w)
+
+        # print(labels_list)
+        # print(jetCnt_list)
+        # print(jetRawE_list)
+
+        data = Data(x=x, edge_index=edge_index, y=torch.tensor(labels_list, dtype=torch.float), weights=torch.tensor(w, dtype=torch.float),)
+        data.eventNumber = torch.tensor(eventNumber_list, dtype=torch.float)
+        data.jetCnt = torch.tensor(jetCnt_list, dtype=torch.float)
+        data.JetCalE = torch.tensor(jetCalE_list, dtype=torch.float)
+        data.JetRawE = torch.tensor(jetRawE_list, dtype=torch.float)
+        data.JetRawPt = torch.tensor(jetRawPt_list, dtype=torch.float)
+        data.TruthJetE = torch.tensor(truthJetE_list, dtype=torch.float)
+        data.TruthJetPt = torch.tensor(truthJetPt_list, dtype=torch.float)
+        data.ClusterECalib = torch.tensor(clusterECalib_list, dtype=torch.float)
+        data.ClusterPt = torch.tensor(clusterPt_list, dtype=torch.float)
+        data.ClusterENGCALIBTOT = torch.tensor(cluster_ENG_CALIB_TOT_list, dtype=torch.float)
+        data.REPredicted = torch.tensor(r_e_prediction_list, dtype=torch.float)
+        data.clusterEDNN = torch.tensor(clusterEDNN_list, dtype=torch.float)
+        data.JetAreaE = torch.tensor(jetAreaE_list, dtype=torch.float)
+        data.JetAreaPt = torch.tensor(jetAreaPt_list, dtype=torch.float)
 
         data.edge_attr = edge_features
         graph_list.append(data)
