@@ -44,6 +44,13 @@ def main():
     print('Prepare model')
     choose_model = config['architecture']['choose_model']
     ## load model
+    if choose_model=="PNAConv_EdgeAttrib":
+        deg = torch.zeros(60, dtype=torch.long)
+        for data in graph_list_train:
+            d = degree(data.edge_index[1], num_nodes=data.num_nodes, dtype=torch.long)
+            #print("d",d)
+            deg += torch.bincount(d, minlength=deg.numel())
+        model = PNAConv_EdgeAttrib(22,deg)
     if choose_model == "GATNet":
         # model = GATNet_2(17)
         model = GATNet_2(21) ## added jetRawE, diff Eta
@@ -85,13 +92,17 @@ def main():
     for epoch in range(n_epochs):
         print("Epoch:{}".format(epoch+1))
 
-        train_loss.append(train(dataloader_train, model, device, optimizer))
-        val_loss.append(validate(dataloader_val, model, device, optimizer))
+        if choose_model=="PNAConv_EdgeAttrib":
+            train_loss.append(train_edge(dataloader_train, model, device, optimizer))
+            val_loss.append(validate_edge(dataloader_val, model, device))
+        else:
+            train_loss.append(train(dataloader_train, model, device, optimizer))
+            val_loss.append(validate(dataloader_val, model, device))
 
         print('Epoch: {:03d}, Train Loss: {:.5f}, Val Loss: {:.5f},'.format(epoch, train_loss[epoch], val_loss[epoch]))
         torch.save(model.state_dict(), path_to_save+model_name+"e{:03d}".format(epoch+1) + "_losstrain{:.3f}".format(train_loss[epoch]) + "_lossval{:.3f}".format(val_loss[epoch]) + ".pt")
 
-    plot_ROC_curve(dataloader_val, model, device, "", outdir=path_to_save+model_name)
+    plot_ROC_curve(dataloader_val, model, device, choose_model, outdir=path_to_save+model_name)
 
 
     return

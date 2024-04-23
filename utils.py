@@ -364,7 +364,7 @@ def validate(loader, model, device):
 #     return loss_all
 
 
-def plot_ROC_curve(loader, model, device, edges_or_nodes, outdir=''):
+def plot_ROC_curve(loader, model, device, choose_model, outdir='' ):
     model.eval()
     nodes_out = torch.tensor([])
     labels_test = torch.tensor([])
@@ -374,7 +374,7 @@ def plot_ROC_curve(loader, model, device, edges_or_nodes, outdir=''):
     for data in loader:
         data = data.to(device)
 
-        if edges_or_nodes=="edges":
+        if choose_model=="PNAConv_EdgeAttrib":
             out = model(data.x, data.edge_index, data.edge_attr)
         else:
             out = model(data.x, data.edge_index)
@@ -426,80 +426,85 @@ def plot_ROC_curve(loader, model, device, edges_or_nodes, outdir=''):
     plt.savefig(outdir+'_roc_curve.png')
     plt.show()
 
+
 def train_edge(loader, model, device, optimizer):
     model.train()
     loss_all = 0
-    for data in loader:
-        #print(len(data))
-        if len(data)< 256 : continue
-        #data = data.to(device)
+    clf, reg = 0, 0
+    for idx, data in enumerate(loader):
+        # if idx > 0: break
+        data = data.to(device)
         optimizer.zero_grad()
-        torch.cuda.empty_cache()
         #out = model(data.x, data.edge_index)
-        #out = model(data.x, data.edge_index, data.edge_attr)
-        out = model(data.x.to(device), data.edge_index.to(device), data.edge_attr.to(device))
-
+        out = model(data.x, data.edge_index, data.edge_attr)
+        clusterEDNN = data.ClusterEDNN
         labels = torch.tensor(data.y, dtype=torch.float).to(device)
+        Ejet_target = []
+        Ejet_train  = []
+        ## regression part
+        for i in range(len(data)):
+            # if i > 0: break;
+            current_out = out[data.ptr[i]:data.ptr[i + 1]]
+            current_clusterEDNN = clusterEDNN[data.ptr[i]:data.ptr[i + 1]]
+            mask = labels[data.ptr[i]:data.ptr[i + 1]] < 0.1
+            Ejet_target.append(torch.sum(current_clusterEDNN[mask]))
+            Ejet_train.append(torch.sum(current_clusterEDNN * (1 - current_out.view(-1))))
+
+        Ejet_train  = torch.stack(Ejet_train)
+        Ejet_target = torch.stack(Ejet_target)
+        # print(Ejet_target)
+        # reshape now
         labels = torch.reshape(labels, (int(list(labels.shape)[0]),1))
         ww = torch.tensor(data.weights, dtype=torch.float).to(device)
         ww = torch.reshape(ww, (int(list(labels.shape)[0]),1))
-
-
-        # loss = F.binary_cross_entropy(output, new_y, weight = new_w)
-        loss = torch.nn.functional.binary_cross_entropy(out, labels, weight = ww)
+        #
+        loss_reg = loss_for_jetE(Ejet_train, Ejet_target)
+        # loss_clf = torch.nn.functional.binary_cross_entropy(out, labels, weight = ww)
+        loss_clf = torch.nn.BCELoss(weight=ww)(out, labels)
+        loss = loss_clf - 0.1 * loss_reg
         loss.backward()
         optimizer.step()
         loss_all += loss.item()
+    # print("loss_clf: {}     loss_reg: {}".format(clf, reg))
     return loss_all
 
-
-def train_edge_2(epoch, loader, model, device, optimizer, optimizer2, optimizer3):
-    model.train()
-    loss_all = 0
-    for data in loader:
-        #print(len(data))
-        if len(data)< 512 : continue
-        #data = data.to(device)
-        optimizer.zero_grad()
-        torch.cuda.empty_cache()
-        #out = model(data.x, data.edge_index)
-        #out = model(data.x, data.edge_index, data.edge_attr)
-        out = model(data.x.to(device), data.edge_index.to(device), data.edge_attr.to(device))
-
-        labels = torch.tensor(data.y, dtype=torch.float).to(device)
-        labels = torch.reshape(labels, (int(list(labels.shape)[0]),1))
-        ww = torch.tensor(data.weights, dtype=torch.float).to(device)
-        ww = torch.reshape(ww, (int(list(labels.shape)[0]),1))
-
-
-        # loss = F.binary_cross_entropy(output, new_y, weight = new_w)
-        loss = torch.nn.functional.binary_cross_entropy(out, labels, weight = ww)
-        loss.backward()
-        if epoch < 5:
-            optimizer3.step()
-        elif epoch >= 5 and epoch > 10:
-            optimizer2.step()
-        elif epoch >= 10:
-            optimizer.step()
-        loss_all += loss.item()
-    return loss_all
-
-
-
-def validate_edge(loader, model, device, optimizer):
+def validate_edge(loader, model, device):
     model.eval()
     loss_all = 0
-    for data in loader:
+    loss_MSE = torch.nn.MSELoss()
+    for idx, data in enumerate(loader):
+        # if idx > 0: break
         data = data.to(device)
         #out = model(data.x, data.edge_index)
         out = model(data.x, data.edge_index, data.edge_attr)
-        out = out.view(-1, out.shape[-1])
-
+        clusterEDNN = data.ClusterEDNN
         labels = torch.tensor(data.y, dtype=torch.float).to(device)
+        Ejet_target = []
+        Ejet_train  = []
+        ## regression part
+        for i in range(len(data)):
+            current_out = out[data.ptr[i]:data.ptr[i + 1]]
+            current_clusterEDNN = clusterEDNN[data.ptr[i]:data.ptr[i + 1]]
+            mask = labels[data.ptr[i]:data.ptr[i + 1]] < 0.1
+            Ejet_target.append(torch.sum(current_clusterEDNN[mask]))
+            Ejet_train.append(torch.sum(current_clusterEDNN * (1 - current_out.view(-1))))
+
+        Ejet_train = torch.stack(Ejet_train)
+        Ejet_target =torch.stack(Ejet_target)
+
+        ## reshape now
+        out = out.view(-1, out.shape[-1])
         labels = torch.reshape(labels, (int(list(labels.shape)[0]),1))
         ww = torch.tensor(data.weights, dtype=torch.float).to(device)
         ww = torch.reshape(ww, (int(list(labels.shape)[0]),1))
 
-        loss = torch.nn.functional.binary_cross_entropy(out, labels, weight = ww)
+        loss_reg = loss_for_jetE(Ejet_train, Ejet_target)
+        # loss = F.binary_cross_entropy(output, new_y, weight = new_w)
+        # loss_clf = torch.nn.functional.binary_cross_entropy(out, labels, weight = ww)
+        loss_clf = torch.nn.BCELoss(weight=ww)(out, labels)
+        # loss = torch.nn.functional.binary_cross_entropy(out, labels)
+        loss = loss_clf - 0.1* loss_reg
+        # loss = loss_clf + l2reg
         loss_all += loss.item()
     return loss_all
+

@@ -262,7 +262,7 @@ def main():
         # print(labels_list)
         # print(jetCnt_list)
         # print(jetRawE_list)
-
+        '''
         data = Data(x=x, edge_index=edge_index, y=torch.tensor(labels_list, dtype=torch.float), weights=torch.tensor(w, dtype=torch.float),)
         data.eventNumber = torch.tensor(eventNumber_list, dtype=torch.float)
         data.jetCnt = torch.tensor(jetCnt_list, dtype=torch.float)
@@ -281,7 +281,25 @@ def main():
 
         data.edge_attr = edge_features
         graph_list.append(data)
-
+        '''
+        data = Data(x=x, edge_index=edge_index, y=torch.tensor(labels_list, dtype=torch.float), weights=torch.tensor(w, dtype=torch.float),
+                    eventNumber=torch.tensor( eventNumber_list , dtype=torch.int),
+                    jetCnt=torch.tensor( jetCnt_list , dtype=torch.int),
+                    JetCalE=torch.tensor( jetCalE_list , dtype=torch.float),
+                    JetRawE=torch.tensor( jetRawE_list , dtype=torch.float),
+                    JetRawPt=torch.tensor( jetRawPt_list , dtype=torch.float),
+                    TruthJetE=torch.tensor( truthJetE_list , dtype=torch.float),
+                    TruthJetPt=torch.tensor( truthJetPt_list , dtype=torch.float),
+                    ClusterECalib=torch.tensor( clusterECalib_list , dtype=torch.float),
+                    ClusterPt=torch.tensor( clusterPt_list , dtype=torch.float),
+                    ClusterENGCALIBTOT=torch.tensor( cluster_ENG_CALIB_TOT_list , dtype=torch.float),
+                    REPredicted=torch.tensor( r_e_prediction_list , dtype=torch.float),
+                    ClusterEDNN=torch.tensor( clusterEDNN_list , dtype=torch.float),
+                    JetAreaE=torch.tensor( jetAreaE_list , dtype=torch.float),
+                    JetAreaPt=torch.tensor( jetAreaPt_list , dtype=torch.float),
+                    counter=torch.tensor( counter , dtype=torch.int),
+                    edge_attr=torch.tensor( edge_features , dtype=torch.float)  )
+        graph_list.append(data)
 
     output_path_graphs = "data/graphs_NewDataset"
     size_train = 0.80

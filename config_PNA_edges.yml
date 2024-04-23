@@ -1,0 +1,12 @@
+data:
+  path_to_train: 'data/graphs_NewDataset_train_new.pt'
+  path_to_test: 'data/graphs_NewDataset_test_new.pt'
+  size_train: 0.80
+  path_to_save: "./ckpts/PNAConv_EdgeAttrib/"
+  model_name: "PNAConv_EdgeAttrib_"
+
+architecture:
+  batch_size: 1024
+  n_epochs: 8
+  learning_rate: 0.0005
+  choose_model: "PNAConv_EdgeAttrib" ## LundNet, GATNet, GINNet, EdgeGinNet, PNANet

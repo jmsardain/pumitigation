@@ -439,11 +439,11 @@ class PNAConv_EdgeAttrib(nn.Module):
         aggregators = ['sum','mean', 'min', 'max', 'std']
         scalers = ['identity', 'amplification', 'attenuation',"linear",'inverse_linear']
         #'''
-        self.conv1 = PNAConv(in_channels, out_channels=70, deg=deg, edge_dim=2, towers=2, post_layers=1,aggregators=aggregators,
+        self.conv1 = PNAConv(in_channels, out_channels=70, deg=deg, edge_dim=3, towers=2, post_layers=1,aggregators=aggregators,
                                             scalers = scalers)
-        self.conv2 = PNAConv(in_channels=70, out_channels=140, deg=deg, edge_dim=2, towers=2, post_layers=1,aggregators=aggregators,
+        self.conv2 = PNAConv(in_channels=70, out_channels=140, deg=deg, edge_dim=3, towers=2, post_layers=1,aggregators=aggregators,
                                             scalers = scalers)
-        self.conv3 = PNAConv(in_channels=140, out_channels=280, deg=deg, edge_dim=2, towers=2, post_layers=1,aggregators=aggregators,
+        self.conv3 = PNAConv(in_channels=140, out_channels=280, deg=deg, edge_dim=3, towers=2, post_layers=1,aggregators=aggregators,
                                             scalers = scalers)
         '''
         self.conv1 = PNA(in_channels=-1, hidden_channels = 32 , num_layers=1 , out_channels=64, aggregators=aggregators,
