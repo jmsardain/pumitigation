@@ -6,7 +6,7 @@ data:
   model_name: "GATNet_"
 
 architecture:
-  batch_size: 2048
+  batch_size: 1024
   n_epochs: 100
-  learning_rate: 0.001
+  learning_rate: 0.00001
   choose_model: "GATNet" ## LundNet, GATNet, GINNet, EdgeGinNet, PNANet

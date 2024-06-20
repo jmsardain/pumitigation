@@ -5,7 +5,7 @@ import torch.optim as optim
 import torch_geometric
 from torch_geometric.data import Data
 from torch_geometric.nn import GCNConv
-from torch_geometric.nn import SplineConv, global_mean_pool, DataParallel, EdgeConv, GATConv, GINConv, PNAConv
+from torch_geometric.nn import SplineConv, global_mean_pool, DataParallel, EdgeConv, GATConv, GINConv, PNAConv, TransformerConv
 import torch.nn.functional as F
 
 # Define custom activation functions
@@ -439,11 +439,11 @@ class PNAConv_EdgeAttrib(nn.Module):
         aggregators = ['sum','mean', 'min', 'max', 'std']
         scalers = ['identity', 'amplification', 'attenuation',"linear",'inverse_linear']
         #'''
-        self.conv1 = PNAConv(in_channels, out_channels=70, deg=deg, edge_dim=3, towers=2, post_layers=1,aggregators=aggregators,
+        self.conv1 = PNAConv(in_channels, out_channels=70, deg=deg, edge_dim=22, towers=2, post_layers=1,aggregators=aggregators,
                                             scalers = scalers)
-        self.conv2 = PNAConv(in_channels=70, out_channels=140, deg=deg, edge_dim=3, towers=2, post_layers=1,aggregators=aggregators,
+        self.conv2 = PNAConv(in_channels=70, out_channels=140, deg=deg, edge_dim=22, towers=2, post_layers=1,aggregators=aggregators,
                                             scalers = scalers)
-        self.conv3 = PNAConv(in_channels=140, out_channels=280, deg=deg, edge_dim=3, towers=2, post_layers=1,aggregators=aggregators,
+        self.conv3 = PNAConv(in_channels=140, out_channels=280, deg=deg, edge_dim=22, towers=2, post_layers=1,aggregators=aggregators,
                                             scalers = scalers)
         '''
         self.conv1 = PNA(in_channels=-1, hidden_channels = 32 , num_layers=1 , out_channels=64, aggregators=aggregators,
@@ -588,6 +588,46 @@ class EdgeGinNet(torch.nn.Module):
         return F.sigmoid(x)
 
 
+class GATNet_simple_withMLP(nn.Module):
+    def __init__(self, in_channels):
+        super(GATNet_simple_withMLP, self).__init__()
+
+        self.conv1 = GATConv(in_channels, 32, heads=8, dropout=0.1)
+        self.conv2 = GATConv(32 * 8, 32, heads=8, dropout=0.1)
+        self.conv3 = GATConv(32 * 8, 64, heads=12, dropout=0.1)
+        self.linear_final = nn.Linear(32*8 + 32*8 + 64*12, 1)
+
+        # MLP
+        self.mlp = nn.Sequential(
+            nn.Linear(in_channels + 1, 128),  # add first output to input
+            nn.ReLU(),
+            nn.Linear(128, 64),
+            nn.ReLU(),
+            nn.Linear(64, 1),
+            nn.Sigmoid()  #  output between 0 and 1
+        )
+
+    def forward(self, x, edge_index, JetRawPt):
+
+        x1 = self.conv1(x, edge_index)
+        x1 = torch.relu(x1)
+        x2 = self.conv2(x1, edge_index)
+        x2 = torch.relu(x2)
+        x3 = self.conv3(x2, edge_index)
+        x3 = torch.relu(x3)
+        x_concat = torch.cat([x1, x2, x3], dim=1)
+        x_final = self.linear_final(x_concat)
+        output1 = torch.sigmoid(x_final)
+
+        # add classification output to input features
+        x_combined = torch.cat([x, output1], dim=1)
+
+        # use the new features in MLP
+        output2 = self.mlp(x_combined)
+        return output1, output2
+
+
+
 class GATNet_simple(nn.Module):
     def __init__(self, in_channels):
         super(GATNet_simple, self).__init__()
@@ -595,10 +635,84 @@ class GATNet_simple(nn.Module):
         self.conv1 = GATConv(in_channels, 32, heads=8, dropout=0.1)
         self.conv2 = GATConv(32 * 8, 32, heads=8, dropout=0.1)
         self.conv3 = GATConv(32 * 8, 64, heads=12, dropout=0.1)
+        self.linear_final = nn.Linear(32*8 + 32*8 + 64*12, 1)
+
+    def forward(self, x, edge_index, JetRawPt):
+
+        x1 = self.conv1(x, edge_index)
+        x1 = torch.relu(x1)
+        x2 = self.conv2(x1, edge_index)
+        x2 = torch.relu(x2)
+        x3 = self.conv3(x2, edge_index)
+        x3 = torch.relu(x3)
+        x_concat = torch.cat([x1, x2, x3], dim=1)
+        x_final = self.linear_final(x_concat)
+        return torch.sigmoid(x_final)
+
+class GATNet_simple_withEdges(nn.Module):
+    def __init__(self, in_channels):
+        super(GATNet_simple_withEdges, self).__init__()
+
+        self.conv1 = GATConv(in_channels, 32, heads=8, dropout=0.1, edge_dim=22)
+        self.conv2 = GATConv(32 * 8, 32, heads=8, dropout=0.1, edge_dim=22)
+        self.conv3 = GATConv(32 * 8, 64, heads=12, dropout=0.1, edge_dim=22)
 
         self.linear_final = nn.Linear(32*8 + 32*8 + 64*12, 1)
 
-    def forward(self, x, edge_index):
+    def forward(self, x, edge_index, edge_attr):
+
+        x1 = self.conv1(x, edge_index, edge_attr)
+        x1 = torch.relu(x1)
+        x2 = self.conv2(x1, edge_index, edge_attr)
+        x2 = torch.relu(x2)
+        x3 = self.conv3(x2, edge_index, edge_attr)
+        x3 = torch.relu(x3)
+
+        x_concat = torch.cat([x1, x2, x3], dim=1)
+
+        x_final = self.linear_final(x_concat)
+
+        return torch.sigmoid(x_final)
+
+
+class GraphTransformer(nn.Module):
+    def __init__(self, in_channels):
+        super(GraphTransformer, self).__init__()
+        self.conv1 = TransformerConv(in_channels, 32, heads=8, edge_dim=22)
+        self.conv2 = TransformerConv(32 * 8, 64, heads=8, edge_dim=22)
+        self.linear = nn.Linear(32*8 + 64*8, 1)
+
+    def forward(self, x, edge_index, edge_attr):
+        # x, edge_index, edge_attr = data.x, data.edge_index, data.edge_attr
+        x1 = self.conv1(x, edge_index, edge_attr)
+        x1 = torch.relu(x1)
+        x2 = self.conv2(x1, edge_index, edge_attr)
+        x2 = torch.relu(x2)
+        x_concat = torch.cat([x1, x2], dim=1)
+
+        x_final = self.linear(x_concat)
+        return torch.sigmoid(x_final)
+
+
+class GATNet_with_pT_attention(nn.Module):
+    def __init__(self, in_channels):
+        super(GATNet_with_pT_attention, self).__init__()
+
+        self.conv1 = GATConv(in_channels, 32, heads=8, dropout=0.1)
+        self.conv2 = GATConv(32 * 8, 32, heads=8, dropout=0.1)
+        self.conv3 = GATConv(32 * 8, 64, heads=12, dropout=0.1)
+
+        # Attention mechanism for pT values
+        self.attention_pT = nn.Sequential(
+            nn.Linear(1, 16),
+            nn.ReLU(),
+            nn.Linear(16, 1280),
+            nn.Sigmoid()
+        )
+
+        self.linear_final = nn.Linear(32*8 + 32*8 + 64*12, 1)
+
+    def forward(self, x, edge_index, JetRawPt):
 
         x1 = self.conv1(x, edge_index)
         x1 = torch.relu(x1)
@@ -609,6 +723,13 @@ class GATNet_simple(nn.Module):
 
         x_concat = torch.cat([x1, x2, x3], dim=1)
 
-        x_final = self.linear_final(x_concat)
+        pT_weights = self.attention_pT(JetRawPt.unsqueeze(1))
+
+        pT_weights = pT_weights.unsqueeze(1)
+        x_weighted = x_concat * pT_weights
+
+        x_weighted_sum = torch.sum(x_weighted, dim=1)
+
+        x_final = self.linear_final(x_weighted_sum)
 
         return torch.sigmoid(x_final)

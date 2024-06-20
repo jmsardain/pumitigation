@@ -8,7 +8,10 @@ data:
   # path_classifier: '/home/jmsardain/JetCalib/PUMitigation/final/ckpts/GATNet/GATNet_e020_losstrain0.118_lossval0.166.pt'
   # path_classifier: '/home/jmsardain/JetCalib/PUMitigation/final/ckpts/GATNet/GATNet_e030_losstrain0.375_lossval0.753.pt'
   # path_classifier: '/home/jmsardain/JetCalib/PUMitigation/final/ckpts/GATNet/GATNet_e030_losstrain0.375_lossval0.753.pt'
-  path_classifier: '/home/jmsardain/JetCalib/PUMitigation/final/ckpts/GATNet/GATNet_e030_losstrain19.255_lossval38.181.pt'
+  # path_classifier: '/home/jmsardain/JetCalib/PUMitigation/final/ckpts/GATNet/GATNet_e030_losstrain19.255_lossval38.181.pt'
+  # path_classifier: '/home/jmsardain/JetCalib/PUMitigation/final/ckpts/GATNet/GATNet_e100_losstrain34.831_lossval37.957.pt'
+  # path_classifier: '/home/jmsardain/JetCalib/PUMitigation/final/ckpts/GATNet/GATNet_e050_losstrain909.334_lossval37.140.pt'
+  path_classifier: '/home/jmsardain/JetCalib/PUMitigation/final/ckpts/GATNet/GATNet_e079_losstrain33.290_lossval32.663.pt'
   path_to_save: "/home/jmsardain/JetCalib/PUMitigation/final/ckpts/GATNet/"
   model_name: "GATNet_"
 

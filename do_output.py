@@ -56,11 +56,23 @@ def main():
     #model = EdgeGinNet()
     choose_model = config['architecture']['choose_model']
     ## load model
+    if choose_model=="PNAConv_EdgeAttrib":
+        deg = torch.zeros(60, dtype=torch.long)
+        for data in graph_list_test:
+            d = degree(data.edge_index[1], num_nodes=data.num_nodes, dtype=torch.long)
+            #print("d",d)
+            deg += torch.bincount(d, minlength=deg.numel())
+        model = PNAConv_EdgeAttrib(22,deg)
     if choose_model == "GATNet":
         # model = GATNet_2(22)
-        model = GATNet_simple(22)
+        # model = GATNet_simple(22)
+        model = GATNet_simple_withMLP(22)
     if choose_model == "EdgeConv":
-        model = EdgeGinNet(21)
+        model = EdgeGinNet(22)
+    if choose_model == "TransformerConv":
+        model = GraphTransformer(22)
+    if choose_model == "GATNetEdges":
+        model = GATNet_simple_withEdges(22)
 
     # path_classifier = "ckpt/PU_batch3000Dropout_Complex_varlr_e015_losstrain125.368_lossval317.697_GATNET.pt"
     # path_classifier = "ckpt/PU_batch3000Dropout_Complex_varlr_GATConv_e015_losstrain49.022_lossval38.814.pt"
@@ -92,7 +104,8 @@ def main():
 
     #print('doing scores ')
     model.eval()
-    nodes_out = torch.tensor([])
+    nodes_out1 = torch.tensor([])
+    nodes_out2 = torch.tensor([])
     labels_test = torch.tensor([])
     Cluster_E = torch.tensor([])
     Cluster_Eta = torch.tensor([])
@@ -127,8 +140,12 @@ def main():
             #     out = model(data.x, data.edge_index, data.edge_attr)
             # else:
             #     out = model(data.x, data.edge_index)
-            out = model(data.x, data.edge_index)
-            out = out.view(-1, out.shape[-1])
+            if choose_model=='PNAConv_EdgeAttrib' or choose_model=='TransformerConv' or choose_model=='GATNetEdges':
+                out = model(data.x, data.edge_index, data.edge_attr)
+            else:
+                out1, out2 = model(data.x, data.edge_index, data.JetRawPt)
+            out1 = out1.view(-1, out1.shape[-1])
+            out2 = out2.view(-1, out2.shape[-1])
 
             #data = data
             labels = torch.tensor(data.y , dtype=torch.float).cpu()
@@ -153,7 +170,8 @@ def main():
             Cluster_Phi = torch.cat((Cluster_Phi.clone().detach(), Cluster_Phi_temp.clone().detach().cpu()), 0)
 
 
-            nodes_out = torch.cat((nodes_out.clone().detach(), out.clone().detach().cpu()), 0)
+            nodes_out1 = torch.cat((nodes_out1.clone().detach(), out1.clone().detach().cpu()), 0)
+            nodes_out2 = torch.cat((nodes_out2.clone().detach(), out2.clone().detach().cpu()), 0)
             labels_test = torch.cat((labels_test.clone().detach(), labels.clone().detach().cpu()), 0)
 
             jet_count += len(data)
@@ -248,7 +266,8 @@ def main():
     jetAreaPt = torch.squeeze(jetAreaPt)
 
     labels_test = torch.squeeze(labels_test)
-    nodes_out = torch.squeeze(nodes_out)
+    nodes_out1 = torch.squeeze(nodes_out1)
+    nodes_out2 = torch.squeeze(nodes_out2)
 
     jetCnt = jetCnt.detach().cpu().numpy()
     eventNumber = eventNumber.detach().cpu().numpy()
@@ -268,7 +287,8 @@ def main():
     jetAreaPt = jetAreaPt.detach().cpu().numpy()
 
     labels_test = labels_test.detach().cpu().numpy()
-    nodes_out = nodes_out.detach().cpu().numpy()
+    nodes_out1 = nodes_out1.detach().cpu().numpy()
+    nodes_out2 = nodes_out2.detach().cpu().numpy()
 
 
     df_out = pd.DataFrame()
@@ -293,7 +313,8 @@ def main():
     df_out['r_e_predicted'] = r_e_predicted
     ## labels and scores
     df_out['labels'] = labels_test
-    df_out['score'] = nodes_out
+    df_out['score1'] = nodes_out1
+    df_out['score2'] = nodes_out2
 
     ## now is necesary to undone the normalization
     # load dictionary with means and std
@@ -303,13 +324,14 @@ def main():
     # norm_variables = ['clusterE', 'clusterEta', 'clusterPhi'] # ['ClusterE','ClusterEta']
 
 
-    norm_variables = ["clusterE", "clusterEta", 'clusterPhi', "jetRawE" # "nPrimVtx", "avgMu",
+    # norm_variables = ["clusterE", "clusterEta", 'clusterPhi', "jetRawE" # "nPrimVtx", "avgMu",
+    norm_variables = ["clusterE", # "nPrimVtx", "avgMu",
                       # "cluster_ENG_FRAC_EM", "cluster_LATERAL", "cluster_LONGITUDINAL",
                       # "cluster_PTD", "cluster_ISOLATION", "zL", "zT", "zRel",'diffEta',
                       # "cluster_CENTER_LAMBDA", "cluster_FIRST_ENG_DENS",
                       # "cluster_SECOND_TIME", "cluster_SIGNIFICANCE",'cluster_CENTER_MAG', "jetRawE"
                      ]
-    logged_variables = ["clusterE", "jetRawE",
+    logged_variables = ["clusterE",
                         # "cluster_CENTER_LAMBDA", "cluster_FIRST_ENG_DENS",
                         # "cluster_SECOND_TIME", "cluster_SIGNIFICANCE",'cluster_CENTER_MAG',
                        ]
@@ -318,7 +340,7 @@ def main():
         if field_name in logged_variables:
             df_out[field_name] = np.exp(df_out[field_name])
     # df_out['clusterEexp'] = np.exp(df_out['clusterE'])
-    df_out['Scores'] = 1 - df_out['score']
+    # df_out['Scores'] = 1 - df_out['score']
     df_out['clusterEDNN'] = df_out['clusterE']  / r_e_predicted
 
     print(df_out.columns)
