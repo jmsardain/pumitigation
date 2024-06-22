@@ -1,38 +1,24 @@
-First you need to make the ROOT files. Use MakeROOT:
-```
-setupATLAS
-lsetup "root 6.30.02-x86_64-centos7-gcc11-opt"
-source compile.sh
-./doTree calib
-./doTree pu
-```
+## DNN/MLP version of PUMitigation
 
-Second make data for calibration and train calibration:
+Once you get your data in a csv file (code to be added to this git repo), the following is done:
 
 ```
-python3 train_calibration.py --train
-python3 train_calibration.py --retrain
+## To train:
+python train.py --train --outdir ./out --lr 0.0001 --epochs 300 --batch_size 64
 ```
 
-Third, make data for pytorch and train graph:
-```
-source /data/jmsardain/LJPTagger/JetTagging/miniconda3/bin/activate
-conda activate rootenv
+ATTENTION: some hyperparameters are set by default, so you can change them in the command line.
 
-python makeData_pumitigation.py
-python train_pumitigation.py config_EdgeConv.yml
-python do_output.py config_test_EdgeConv.yml
+For the testing, do the following:
+```
+python train.py --test
 ```
 
-For plotting, the code HistoMaker.C makes sure to get the observables per jet. In a clean new terminal:
-```
-setupATLAS
-lsetup "root 6.30.02-x86_64-centos7-gcc11-opt"
-cd MakePlot/
-source compile.sh
-./doPlot /path/to/ROOTFILE/in/ckpts/out_model.root
-```
+The testing for now only does plots at cluster classification level. The dataframe with untransformed variables needs to be called so that the jet info can be calculated correctly.
 
-N.B.: the code using the TLorentzVector for now is giving the same values for jetPU and jetEM, either bug in the way HistoMaker.C is handling the values, or problem in the pumitigation code.
+## Action Items
 
-The Plotting.ipynb notebook takes care of the final plotting
+- [ ] Add code to get the csv files: train, val, test transformed, test untransformed
+- [ ] Import the plotting code so that the plots can be made on the fly without saving then reading dataframe
+- [ ] In the plotting code, check that the score transformation is applied correctly
+- [ ] In the plotting code, check that there's a closure for jetRawE (i.e. jetRawE = sum clusterE)
