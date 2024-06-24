@@ -27,8 +27,9 @@ def main():
     args = parse_arguments()
 
     train_file_path = '/home/shfoster/calo-jad/calo-jad/MLClusterCalibration/training/transformed_train-1.csv'
-    test_file_path = '/home/shfoster/calo-jad/calo-jad/MLClusterCalibration/training/transformed_test-1.csv'
     val_file_path = '/home/shfoster/calo-jad/calo-jad/MLClusterCalibration/training/transformed_val-1.csv'
+    test_file_path = '/home/shfoster/calo-jad/calo-jad/MLClusterCalibration/training/transformed_test-1.csv'
+    test_file_path_untransformed = '/home/shfoster/calo-jad/calo-jad/MLClusterCalibration/training/untransformed_test-1.csv'
 
     columns_to_use = ['cluster_fracE', 'cluster_nCells', 'avgMu', 'nPrimVtx', 'clusterE', 'clusterEta', 'cluster_CENTER_MAG',
                       'cluster_FIRST_ENG_DENS', 'cluster_CENTER_LAMBDA', 'cluster_LATERAL',
@@ -58,7 +59,8 @@ def main():
         test_data = pd.read_csv(test_file_path)
         X_test  = test_data[columns_to_use]
         y_test  = test_data['labels']
-        ## Here, one should add the untransformed data set as well so that you retrieve jet info correctly
+        ## Get untransformed test data
+        test_data_untrans = pd.read_csv(test_file_path_untransformed)
 
         ## Get saved model
         with open(os.path.join(args.outdir, "model.json"), "r") as json_file:
@@ -70,6 +72,12 @@ def main():
         print_eval_metrics(y_test, pred_labels)
         plot_ROC_curve(y_test, score, output_dir=args.outdir)
         plot_score(y_test, score)
+
+        test_data_untrans['score'] = score
+        test_data_untrans['labels'] = y_test
+        test_data_untrans.to_csv('{}/finalCSV.csv'.format(args.outdir), sep=',')
+
+
 
 if __name__ == "__main__":
     main()
