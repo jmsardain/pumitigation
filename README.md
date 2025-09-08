@@ -40,7 +40,7 @@ The Plotting.ipynb notebook takes care of the final plotting
 
 ## Plots and info for the PUBNote 
 
-- [ ] Control plots for all features
-- [ ] List of hyperparameters (batch size, learning rate) 
-- [ ] Plot of loss function vs epoch for training and validation 
-- [ ] Plot for jet response vs pT and jet resolution vs pT  
+- [x] Control plots for all features
+- [x] List of hyperparameters (batch size, learning rate) 
+- [x] Plot of loss function vs epoch for training and validation 
+- [x] Plot for jet response vs pT and jet resolution vs pT  
